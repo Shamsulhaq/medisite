@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# appointment data store (contains personal data — do not commit)
+/data
+
+# uploaded media (user content) — keep the folder, ignore its contents
+/public/uploads/*
+!/public/uploads/.gitkeep

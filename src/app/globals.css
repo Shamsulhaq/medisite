@@ -1,26 +1,49 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Theme tokens (Tailwind v4). These map to utilities like `bg-brand`,
+   `text-brand-dark`, etc. Adjust the brand color to rebrand the whole site.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-brand: #0d9488; /* teal-600 */
+  --color-brand-dark: #0f766e; /* teal-700 */
+  --color-brand-light: #ccfbf1; /* teal-100 */
+  --color-ink: #0f172a; /* slate-900 */
+  --color-muted: #475569; /* slate-600 */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+}
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Prevent iOS zoom on input focus (inputs must be 16px+) */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Prevent horizontal overflow on tables */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Consistent readable content width for article/prose sections */
+.prose-content p {
+  margin-bottom: 1.1rem;
+  line-height: 1.8;
 }

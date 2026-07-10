@@ -9,9 +9,14 @@ import {
   deletePatient,
   addRecord,
   deleteRecord,
+  findByPhone,
   type PatientInfoInput,
   type RecordKind,
 } from "@/lib/patients";
+import { getAppointments } from "@/lib/appointments";
+import { getSettings, saveSettings } from "@/lib/store";
+import { addCustomMedicine } from "@/lib/custom-medicines";
+import { MEDICINES, searchMedicines } from "@/lib/medicines";
 
 async function requireSession() {
   const session = await auth();
@@ -26,9 +31,41 @@ export async function createPatientAction(
   if (!input.name?.trim()) {
     return { ok: false, error: "Patient name is required." };
   }
-  const patient = await createPatient(input);
+  if (!input.phone?.trim()) {
+    return { ok: false, error: "Phone number is required (used as identity)." };
+  }
+  const { patient, error } = await createPatient(input);
+  if (error) return { ok: false, error };
   revalidatePath("/admin/patients");
-  return { ok: true, id: patient.id };
+  return { ok: true, id: patient!.id };
+}
+
+export async function createPatientFromAppointmentAction(
+  appointmentId: string
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  await requireSession();
+  const appointments = await getAppointments();
+  const apt = appointments.find((a) => a.id === appointmentId);
+  if (!apt) return { ok: false, error: "Appointment not found." };
+
+  // Check if patient already exists (by phone)
+  const existing = await findByPhone(apt.phone);
+  if (existing) {
+    return { ok: true, id: existing.id, error: `Patient already exists (${existing.patientId}: ${existing.name}). Opening their record.` };
+  }
+
+  const { patient, error } = await createPatient({
+    name: apt.name,
+    age: "",
+    gender: "",
+    phone: apt.phone,
+    email: apt.email,
+    address: "",
+    notes: `Created from appointment on ${apt.date} (${apt.time}).`,
+  });
+  if (error) return { ok: false, error };
+  revalidatePath("/admin/patients");
+  return { ok: true, id: patient!.id };
 }
 
 export async function updatePatientAction(
@@ -73,4 +110,41 @@ export async function deleteRecordAction(
   const ok = await deleteRecord(patientId, kind, recordId);
   revalidatePath(`/admin/patients/${patientId}`);
   return { ok };
+}
+
+export async function learnFromConsultationAction(data: {
+  advices: string[];
+  medicines: { name: string; generic: string; form: string; dosage: string }[];
+}): Promise<void> {
+  await requireSession();
+
+  // Learn new advices → add to predefined list if not already there
+  const settings = await getSettings();
+  const existingAdvices = new Set(
+    settings.prescription.predefinedAdvices.map((a) => a.toLowerCase())
+  );
+  const newAdvices = data.advices.filter(
+    (a) => a.trim() && !existingAdvices.has(a.toLowerCase())
+  );
+  if (newAdvices.length > 0) {
+    await saveSettings({
+      ...settings,
+      prescription: {
+        ...settings.prescription,
+        predefinedAdvices: [
+          ...settings.prescription.predefinedAdvices,
+          ...newAdvices,
+        ],
+      },
+    });
+  }
+
+  // Learn new medicines → add to custom medicines store
+  for (const med of data.medicines) {
+    if (!med.name.trim()) continue;
+    // Check if it's in the built-in DB
+    const found = searchMedicines(med.name, 1);
+    if (found.length > 0) continue; // already known
+    await addCustomMedicine(med);
+  }
 }
