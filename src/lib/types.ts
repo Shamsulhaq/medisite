@@ -34,6 +34,7 @@ export type TimeRange = { start: string; end: string }; // "HH:MM" 24-hour
 export type DayAvailability = { enabled: boolean; ranges: TimeRange[] };
 export type Availability = {
   slotMinutes: number; // length of each appointment slot
+  maxPerSlot: number; // max patients per slot (default 10)
   week: DayAvailability[]; // 7 entries, index 0 = Sunday … 6 = Saturday
   holidays: string[]; // specific off-days, "YYYY-MM-DD"
 };
@@ -122,6 +123,25 @@ export type Messages = {
   footerDisclaimer: LS;
 };
 
+export type PrescriptionTemplateMedicine = {
+  name: string;
+  generic: string;
+  type: "generic" | "brand";
+  form: string;
+  dosage: string;
+  frequency: string;
+  timing: string;
+  duration: string;
+  specialNote: string;
+};
+
+export type PrescriptionTemplate = {
+  id: string;
+  name: string;
+  medicines: PrescriptionTemplateMedicine[];
+  advices: string[];
+};
+
 export type SiteSettings = {
   // Metadata / SEO
   siteTitle: LS;
@@ -163,6 +183,7 @@ export type SiteSettings = {
   appointment: AppointmentConfig;
   email: EmailConfig;
   prescription: PrescriptionConfig;
+  prescriptionTemplates: PrescriptionTemplate[];
 };
 
 export type BlogPost = {

@@ -7,6 +7,7 @@ import {
   setAppointmentStatusAction,
   deleteAppointmentAction,
 } from "@/app/admin/actions";
+import { createPatientFromAppointmentAction } from "@/app/admin/patient-actions";
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -34,6 +35,15 @@ export default function AppointmentsManager({
     startTransition(async () => {
       await deleteAppointmentAction(id);
       router.refresh();
+    });
+  }
+
+  async function startVisit(appointmentId: string) {
+    startTransition(async () => {
+      const res = await createPatientFromAppointmentAction(appointmentId);
+      if (res.ok && res.id) {
+        router.push(`/admin/patients/${res.id}`);
+      }
     });
   }
 
@@ -96,6 +106,14 @@ export default function AppointmentsManager({
               </td>
               <td className="px-5 py-3">
                 <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => startVisit(a.id)}
+                    disabled={pending}
+                    className="rounded-lg bg-brand px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
+                  >
+                    Start Visit
+                  </button>
                   <select
                     value={a.status}
                     disabled={pending}

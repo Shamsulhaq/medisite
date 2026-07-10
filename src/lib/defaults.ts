@@ -293,6 +293,7 @@ export const defaultSettings: SiteSettings = {
       "After 3 months",
     ],
   },
+  prescriptionTemplates: [],
 };
 
 export const defaultPosts: BlogPost[] = [

@@ -1,11 +1,30 @@
 import { NextResponse } from "next/server";
-import { addAppointment, validateAppointment } from "@/lib/appointments";
+import { addAppointment, getAppointments, validateAppointment } from "@/lib/appointments";
 import { getSettings } from "@/lib/store";
 import { generateSlotsForDate } from "@/lib/availability";
 
 // File writes require the Node.js runtime (not Edge).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get("date");
+  const location = searchParams.get("location");
+
+  if (!date || !location) {
+    return NextResponse.json({ counts: {} });
+  }
+
+  const existingAppointments = await getAppointments();
+  const counts: Record<string, number> = {};
+  for (const a of existingAppointments) {
+    if (a.date === date && a.location === location && a.status !== "cancelled") {
+      counts[a.time] = (counts[a.time] || 0) + 1;
+    }
+  }
+  return NextResponse.json({ counts });
+}
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -69,6 +88,24 @@ export async function POST(request: Request) {
         ok: false,
         errors: [
           "The selected date and time is not available. Please pick an open slot.",
+        ],
+      },
+      { status: 422 }
+    );
+  }
+
+  // Enforce slot capacity
+  const maxPerSlot = availability.maxPerSlot ?? 10;
+  const existingAppointments = await getAppointments();
+  const bookedCount = existingAppointments.filter(
+    (a) => a.date === date && a.time === time && a.location === location && a.status !== "cancelled"
+  ).length;
+  if (bookedCount >= maxPerSlot) {
+    return NextResponse.json(
+      {
+        ok: false,
+        errors: [
+          "This time slot is fully booked. Please choose a different time.",
         ],
       },
       { status: 422 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SiteSettings, PrescriptionConfig } from "@/lib/types";
+import type { SiteSettings, PrescriptionConfig, PrescriptionTemplate } from "@/lib/types";
 import { saveSettingsAction } from "@/app/admin/actions";
 import { Section, TextField, AddButton } from "@/components/admin/fields";
 
@@ -11,6 +11,7 @@ const TABS = [
   { id: "advices", label: "Advices" },
   { id: "timing", label: "Timing" },
   { id: "followup", label: "Follow-up" },
+  { id: "templates", label: "Templates" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -23,6 +24,7 @@ export default function PrescriptionConfigForm({
   initial: SiteSettings;
 }) {
   const [p, setP] = useState<PrescriptionConfig>(initial.prescription);
+  const [templates, setTemplates] = useState<PrescriptionTemplate[]>(initial.prescriptionTemplates ?? []);
   const [tab, setTab] = useState<TabId>("header");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -30,7 +32,7 @@ export default function PrescriptionConfigForm({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true); setMsg(null);
-    const res = await saveSettingsAction({ ...initial, prescription: p });
+    const res = await saveSettingsAction({ ...initial, prescription: p, prescriptionTemplates: templates });
     setSaving(false);
     setMsg(res.ok ? { type: "ok", text: "Prescription configuration saved." } : { type: "err", text: res.error ?? "Failed." });
     if (res.ok) window.scrollTo({ top: 0, behavior: "smooth" });
@@ -157,6 +159,38 @@ export default function PrescriptionConfigForm({
               </div>
             ))}
             <AddButton label="Add follow-up option" onClick={() => addToList("followUpOptions")} />
+          </Section>
+        </div>
+      )}
+
+      {/* TEMPLATES */}
+      {tab === "templates" && (
+        <div className="space-y-6">
+          <Section title="Prescription Templates" description="Pre-saved combinations of medicines and advices. Templates can be loaded quickly when writing a consultation.">
+            {templates.length === 0 && (
+              <p className="text-sm text-muted">No templates saved yet. Save a template from a patient consultation to see it here.</p>
+            )}
+            {templates.map((tpl, i) => (
+              <div key={tpl.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{tpl.name}</p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {tpl.medicines.length} medicine{tpl.medicines.length !== 1 ? "s" : ""} · {tpl.advices.length} advice{tpl.advices.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setTemplates(templates.filter((_, idx) => idx !== i))}
+                    className="text-xs font-medium text-red-600 hover:underline">Delete</button>
+                </div>
+                {tpl.medicines.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-xs text-muted">
+                    {tpl.medicines.map((m, mi) => (
+                      <li key={mi}>{m.form} {m.name} {m.dosage} — {m.frequency} {m.duration}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </Section>
         </div>
       )}

@@ -25,6 +25,7 @@ export const WEEKDAYS = [
 // Default: chamber open Sat–Thu evening, closed Friday.
 export const defaultAvailability: Availability = {
   slotMinutes: 30,
+  maxPerSlot: 10,
   holidays: [],
   week: [
     { enabled: true, ranges: [{ start: "18:00", end: "21:00" }] }, // Sun
@@ -64,11 +65,16 @@ export function normalizeAvailability(raw: unknown): Availability {
       ? a.slotMinutes
       : defaultAvailability.slotMinutes;
 
+  const maxPerSlot =
+    typeof a.maxPerSlot === "number" && a.maxPerSlot > 0
+      ? a.maxPerSlot
+      : defaultAvailability.maxPerSlot;
+
   const holidays = Array.isArray(a.holidays)
     ? (a.holidays as unknown[]).filter((h): h is string => typeof h === "string")
     : [];
 
-  return { slotMinutes, week, holidays };
+  return { slotMinutes, maxPerSlot, week, holidays };
 }
 
 // Parse a "YYYY-MM-DD" string into a local Date (avoids UTC offset surprises).

@@ -81,6 +81,7 @@ export default async function PatientDetailPage({
         patient={patient}
         doctor={doctorInfo}
         prescriptionConfig={settings.prescription}
+        prescriptionTemplates={settings.prescriptionTemplates}
         chambers={settings.appointment.chambers}
         appointments={appointments}
       />

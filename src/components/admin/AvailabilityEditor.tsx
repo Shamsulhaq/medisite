@@ -83,6 +83,26 @@ export default function AvailabilityEditor({
         />
       </label>
 
+      {/* Max patients per slot */}
+      <label className="block max-w-xs">
+        <span className="text-sm font-medium text-ink">
+          Max patients per slot
+        </span>
+        <span className="mt-0.5 block text-xs text-muted">
+          Maximum number of bookings allowed in each time slot.
+        </span>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={value.maxPerSlot ?? 10}
+          onChange={(e) =>
+            onChange({ ...value, maxPerSlot: Number(e.target.value) || 10 })
+          }
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        />
+      </label>
+
       {/* Weekly schedule */}
       <div>
         <p className="text-sm font-medium text-ink">Weekly Schedule</p>

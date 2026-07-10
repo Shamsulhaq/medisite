@@ -11,8 +11,44 @@ import {
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
 
+function ReadOnlyView({ patient, onEdit }: { patient: Patient; onEdit: () => void }) {
+  const fields: { label: string; value: string }[] = [
+    { label: "Full Name", value: patient.name },
+    { label: "Age", value: patient.age },
+    { label: "Gender", value: patient.gender },
+    { label: "Phone", value: patient.phone },
+    { label: "Email", value: patient.email },
+    { label: "Address", value: patient.address },
+    { label: "Notes", value: patient.notes },
+  ];
+
+  return (
+    <div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {fields.map((f) => (
+          <div
+            key={f.label}
+            className={f.label === "Full Name" || f.label === "Address" || f.label === "Notes" ? "sm:col-span-2" : ""}
+          >
+            <p className="text-xs font-medium text-muted uppercase tracking-wide">{f.label}</p>
+            <p className="mt-0.5 text-sm text-ink">{f.value || <span className="text-slate-400">—</span>}</p>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="mt-4 rounded-full border border-brand px-5 py-2 text-sm font-semibold text-brand transition hover:bg-brand hover:text-white"
+      >
+        Edit
+      </button>
+    </div>
+  );
+}
+
 export default function PatientForm({ patient }: { patient?: Patient }) {
   const router = useRouter();
+  const [editing, setEditing] = useState(!patient); // new patient → always editing
   const [form, setForm] = useState<PatientInfoInput>({
     name: patient?.name ?? "",
     age: patient?.age ?? "",
@@ -30,6 +66,23 @@ export default function PatientForm({ patient }: { patient?: Patient }) {
   const set = (k: keyof PatientInfoInput) => (v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  function handleCancel() {
+    // Revert to patient data
+    if (patient) {
+      setForm({
+        name: patient.name,
+        age: patient.age,
+        gender: patient.gender,
+        phone: patient.phone,
+        email: patient.email,
+        address: patient.address,
+        notes: patient.notes,
+      });
+    }
+    setEditing(false);
+    setMsg(null);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -45,12 +98,13 @@ export default function PatientForm({ patient }: { patient?: Patient }) {
     if (patient) {
       const res = await updatePatientAction(patient.id, form);
       setSaving(false);
-      setMsg(
-        res.ok
-          ? { type: "ok", text: "Patient details saved." }
-          : { type: "err", text: res.error ?? "Failed to save." }
-      );
-      router.refresh();
+      if (res.ok) {
+        setMsg({ type: "ok", text: "Patient details saved." });
+        setEditing(false);
+        router.refresh();
+      } else {
+        setMsg({ type: "err", text: res.error ?? "Failed to save." });
+      }
     } else {
       const res = await createPatientAction(form);
       setSaving(false);
@@ -61,6 +115,11 @@ export default function PatientForm({ patient }: { patient?: Patient }) {
         setMsg({ type: "err", text: res.error ?? "Failed to create." });
       }
     }
+  }
+
+  // Read-only view for existing patients
+  if (patient && !editing) {
+    return <ReadOnlyView patient={patient} onEdit={() => setEditing(true)} />;
   }
 
   return (
@@ -146,13 +205,24 @@ export default function PatientForm({ patient }: { patient?: Patient }) {
         </label>
       </div>
 
-      <button
-        type="submit"
-        disabled={saving}
-        className="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60"
-      >
-        {saving ? "Saving..." : patient ? "Save Details" : "Create Patient"}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60"
+        >
+          {saving ? "Saving..." : patient ? "Save Details" : "Create Patient"}
+        </button>
+        {patient && (
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-full border border-slate-300 px-5 py-2.5 text-sm font-medium text-muted transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }

@@ -179,6 +179,7 @@ function normalizeSettings(raw: any): SiteSettings {
     ),
     email: normalizeEmail(s.email),
     prescription: normalizePrescriptionConfig(s.prescription),
+    prescriptionTemplates: Array.isArray(s.prescriptionTemplates) ? s.prescriptionTemplates : [],
   };
 }
 
