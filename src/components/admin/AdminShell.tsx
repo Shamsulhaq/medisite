@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { logoutAction } from "@/app/admin/actions";
 import AdminIcon from "@/components/admin/AdminIcon";
+import TopProgressBar from "@/components/admin/TopProgressBar";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: "grid", exact: true },
@@ -13,6 +14,7 @@ const NAV = [
   { href: "/admin/posts", label: "Blog Posts", icon: "fileText" },
   { href: "/admin/appointments", label: "Appointments", icon: "calendar" },
   { href: "/admin/patients", label: "Patient Records", icon: "users" },
+  { href: "/admin/reports", label: "Reports", icon: "grid" },
 ];
 
 function pageTitle(pathname: string): string {
@@ -28,6 +30,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/admin/patients/new")) return "Add Patient";
   if (pathname.startsWith("/admin/patients/") && pathname !== "/admin/patients") return "Patient";
   if (pathname.startsWith("/admin/patients")) return "Patients";
+  if (pathname.startsWith("/admin/reports")) return "Reports";
   return "Admin";
 }
 
@@ -179,6 +182,8 @@ export default function AdminShell({
 
       {/* Main area */}
       <div className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${collapsed ? "lg:ml-16" : "lg:ml-64"}`}>
+        {/* Progress bar */}
+        <TopProgressBar />
         {/* Top bar */}
         <header className="sticky top-0 z-[50] flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-3 sm:px-5">
           <button

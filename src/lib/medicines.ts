@@ -62,11 +62,38 @@ export const DURATIONS = [
   "21 days", "1 month", "2 months", "3 months", "6 months",
 ];
 
-export const FORMS = [
-  "Tablet", "Capsule", "Syrup", "Suspension", "Drops",
-  "Inhaler", "Injection", "Cream", "Ointment", "Gel",
-  "Suppository", "Sachet", "Chewable", "MUPS Tablet", "IV",
-];
+export const FORM_MAP: Record<string, string> = {
+  "Tablet": "Tab.",
+  "Capsule": "Cap.",
+  "Syrup": "Syp.",
+  "Suspension": "Susp.",
+  "Drops": "Drop",
+  "Inhaler": "Inh.",
+  "Injection": "Inj.",
+  "Cream": "Cr.",
+  "Ointment": "Oint.",
+  "Gel": "Gel",
+  "Suppository": "Supp.",
+  "Sachet": "Sac.",
+  "Chewable": "Chew.",
+  "MUPS Tablet": "MUPS",
+  "IV": "IV",
+  "Solution": "Soln.",
+  "Powder": "Pwd.",
+  "Lotion": "Lot.",
+  "Nasal Spray": "N.Spray",
+  "Eye Drop": "E.Drop",
+  "Ear Drop": "Ear Dr.",
+  "Tablet (Sustained Release)": "SR Tab.",
+  "Tablet (Extended Release)": "ER Tab.",
+};
+
+export const FORMS = Object.keys(FORM_MAP);
+
+/** Get the short abbreviation for a dosage form */
+export function shortForm(form: string): string {
+  return FORM_MAP[form] || form;
+}
 
 /**
  * Search medicines by generic or brand name. Returns up to `limit` matches.

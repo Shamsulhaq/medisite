@@ -34,6 +34,7 @@ const TABS = [
   { id: "navigation", label: "Navigation" },
   { id: "lists", label: "Lists" },
   { id: "email", label: "Email" },
+  { id: "payment", label: "Payment" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -773,6 +774,51 @@ export default function SettingsForm({ initial }: { initial: SiteSettings }) {
                 />
               </>
             )}
+          </Section>
+        </div>
+      )}
+
+      {/* PAYMENT */}
+      {tab === "payment" && (
+        <div className="space-y-6">
+          <Section
+            title="Fee Structure"
+            description="Configure consultation fees based on visit frequency. These will be auto-suggested when creating a consultation."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="First Visit (৳)"
+                value={String(s.feeStructure.firstVisit)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, firstVisit: Number(v) || 0 })
+                }
+                placeholder="500"
+              />
+              <TextField
+                label="Within 7 Days (৳)"
+                value={String(s.feeStructure.within7Days)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, within7Days: Number(v) || 0 })
+                }
+                placeholder="300"
+              />
+              <TextField
+                label="Within 30 Days (৳)"
+                value={String(s.feeStructure.within30Days)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, within30Days: Number(v) || 0 })
+                }
+                placeholder="200"
+              />
+              <TextField
+                label="After 30 Days (৳)"
+                value={String(s.feeStructure.after30Days)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, after30Days: Number(v) || 0 })
+                }
+                placeholder="500"
+              />
+            </div>
           </Section>
         </div>
       )}

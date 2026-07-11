@@ -46,6 +46,17 @@ async function writeJson<T>(file: string, value: T): Promise<void> {
 
 // ---- Settings normalization ------------------------------------------------
 
+function normalizeFeeStructure(raw: unknown): import("./types").SiteSettings["feeStructure"] {
+  const d = defaultSettings.feeStructure;
+  const f = (raw ?? {}) as Record<string, unknown>;
+  return {
+    firstVisit: typeof f.firstVisit === "number" ? f.firstVisit : d.firstVisit,
+    within7Days: typeof f.within7Days === "number" ? f.within7Days : d.within7Days,
+    within30Days: typeof f.within30Days === "number" ? f.within30Days : d.within30Days,
+    after30Days: typeof f.after30Days === "number" ? f.after30Days : d.after30Days,
+  };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function normalizeSettings(raw: any): SiteSettings {
   const d = defaultSettings;
@@ -73,6 +84,7 @@ function normalizeSettings(raw: any): SiteSettings {
       typeof s.appointmentsEnabled === "boolean"
         ? s.appointmentsEnabled
         : d.appointmentsEnabled,
+    feeStructure: normalizeFeeStructure(s.feeStructure),
     doctor: {
       name: lsField(doctor.name, d.doctor.name),
       title: lsField(doctor.title, d.doctor.title),
@@ -200,6 +212,7 @@ function normalizePrescriptionConfig(raw: unknown): import("./types").Prescripti
       rightText: typeof f.rightText === "string" ? f.rightText : d.footer.rightText,
     },
     predefinedAdvices: Array.isArray(p.predefinedAdvices) ? p.predefinedAdvices : d.predefinedAdvices,
+    predefinedDiagnoses: Array.isArray(p.predefinedDiagnoses) ? p.predefinedDiagnoses : d.predefinedDiagnoses,
     timingOptions: Array.isArray(p.timingOptions) ? p.timingOptions : d.timingOptions,
     followUpOptions: Array.isArray(p.followUpOptions) ? p.followUpOptions : d.followUpOptions,
   };

@@ -50,6 +50,16 @@ export type Consultation = {
   followUp: string; // e.g. "৪ সপ্তাহ পর"
   notes: string;
   attachment?: string;
+  // Payment
+  payment?: {
+    fee: number;
+    received: number;
+    discount: number;
+    status: "paid" | "unpaid" | "partial";
+  };
+  // Audit trail
+  previousVersionId?: string; // points to the consultation this one supersedes
+  superseded?: boolean; // true if a newer version exists
 };
 
 // Legacy types kept for backward compatibility with existing data
@@ -265,6 +275,23 @@ export async function deleteRecord(
   patient[kind] = (patient[kind] as any[]).filter(
     (r) => r.id !== recordId
   ) as never;
+  patient.updatedAt = new Date().toISOString();
+  patients[idx] = patient;
+  await writeAll(patients);
+  return true;
+}
+
+export async function markConsultationSuperseded(
+  patientId: string,
+  consultationId: string
+): Promise<boolean> {
+  const patients = await readAll();
+  const idx = patients.findIndex((p) => p.id === patientId);
+  if (idx === -1) return false;
+  const patient = normalize(patients[idx]);
+  const con = patient.consultations.find((c) => c.id === consultationId);
+  if (!con) return false;
+  con.superseded = true;
   patient.updatedAt = new Date().toISOString();
   patients[idx] = patient;
   await writeAll(patients);

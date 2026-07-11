@@ -9,6 +9,7 @@ const TABS = [
   { id: "header", label: "Header" },
   { id: "footer", label: "Footer" },
   { id: "advices", label: "Advices" },
+  { id: "diagnoses", label: "Diagnoses" },
   { id: "timing", label: "Timing" },
   { id: "followup", label: "Follow-up" },
   { id: "templates", label: "Templates" },
@@ -38,13 +39,13 @@ export default function PrescriptionConfigForm({
     if (res.ok) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function editList(key: "predefinedAdvices" | "timingOptions" | "followUpOptions", i: number, v: string) {
+  function editList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions", i: number, v: string) {
     setP({ ...p, [key]: p[key].map((x, idx) => (idx === i ? v : x)) });
   }
-  function removeFromList(key: "predefinedAdvices" | "timingOptions" | "followUpOptions", i: number) {
+  function removeFromList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions", i: number) {
     setP({ ...p, [key]: p[key].filter((_, idx) => idx !== i) });
   }
-  function addToList(key: "predefinedAdvices" | "timingOptions" | "followUpOptions") {
+  function addToList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions") {
     setP({ ...p, [key]: [...p[key], ""] });
   }
   function editHeaderLine(side: "leftLines" | "rightLines" | "contactLines", i: number, v: string) {
@@ -129,6 +130,22 @@ export default function PrescriptionConfigForm({
               </div>
             ))}
             <AddButton label="Add advice" onClick={() => addToList("predefinedAdvices")} />
+          </Section>
+        </div>
+      )}
+
+      {/* DIAGNOSES */}
+      {tab === "diagnoses" && (
+        <div className="space-y-6">
+          <Section title="Pre-defined Diagnoses" description="Common diagnoses that auto-suggest when the doctor types. These grow automatically as new diagnoses are entered.">
+            {p.predefinedDiagnoses.map((dx, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-muted w-6">{i + 1}.</span>
+                <input value={dx} onChange={(e) => editList("predefinedDiagnoses", i, e.target.value)} className={inputClass} />
+                <button type="button" onClick={() => removeFromList("predefinedDiagnoses", i)} className="text-xs text-red-600 hover:underline">✕</button>
+              </div>
+            ))}
+            <AddButton label="Add diagnosis" onClick={() => addToList("predefinedDiagnoses")} />
           </Section>
         </div>
       )}

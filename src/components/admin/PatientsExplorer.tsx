@@ -23,9 +23,10 @@ export default function PatientsExplorer({
   );
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sortBy, setSortBy] = useState<"lastVisit" | "name" | "patientId" | "created">("lastVisit");
 
   const filtered = useMemo(() => {
-    return patients.filter((p) => {
+    const list = patients.filter((p) => {
       const q = search.toLowerCase();
       const matchSearch =
         !q ||
@@ -38,7 +39,24 @@ export default function PatientsExplorer({
       const matchTo = !to || p.createdAt.slice(0, 10) <= to;
       return matchSearch && matchGender && matchFrom && matchTo;
     });
-  }, [patients, search, gender, from, to]);
+
+    const sorted = [...list];
+    switch (sortBy) {
+      case "lastVisit":
+        sorted.sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt));
+        break;
+      case "name":
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "patientId":
+        sorted.sort((a, b) => a.patientId.localeCompare(b.patientId));
+        break;
+      case "created":
+        sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        break;
+    }
+    return sorted;
+  }, [patients, search, gender, from, to, sortBy]);
 
   return (
     <div>
@@ -85,6 +103,19 @@ export default function PatientsExplorer({
               onChange={(e) => setTo(e.target.value)}
               className={control}
             />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted">Sort by</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className={control}
+            >
+              <option value="lastVisit">Last Visit</option>
+              <option value="name">Name</option>
+              <option value="patientId">Patient ID</option>
+              <option value="created">Created</option>
+            </select>
           </label>
           <span className="ml-auto self-end text-xs text-muted">
             {filtered.length} result{filtered.length === 1 ? "" : "s"}

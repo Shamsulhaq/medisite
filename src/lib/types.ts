@@ -87,6 +87,7 @@ export type PrescriptionConfig = {
   };
   // Pre-configured items
   predefinedAdvices: string[];
+  predefinedDiagnoses: string[];
   timingOptions: string[];
   followUpOptions: string[];
 };
@@ -153,6 +154,13 @@ export type SiteSettings = {
   // Language + features
   defaultLanguage: Locale;
   appointmentsEnabled: boolean;
+  // Fee structure
+  feeStructure: {
+    firstVisit: number;
+    within7Days: number;
+    within30Days: number;
+    after30Days: number;
+  };
   // Doctor profile
   doctor: {
     name: LS;

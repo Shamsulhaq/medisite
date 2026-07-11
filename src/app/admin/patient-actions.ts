@@ -10,6 +10,7 @@ import {
   addRecord,
   deleteRecord,
   findByPhone,
+  markConsultationSuperseded,
   type PatientInfoInput,
   type RecordKind,
 } from "@/lib/patients";
@@ -114,6 +115,7 @@ export async function deleteRecordAction(
 
 export async function learnFromConsultationAction(data: {
   advices: string[];
+  diagnoses?: string[];
   medicines: { name: string; generic: string; form: string; dosage: string }[];
 }): Promise<void> {
   await requireSession();
@@ -126,7 +128,16 @@ export async function learnFromConsultationAction(data: {
   const newAdvices = data.advices.filter(
     (a) => a.trim() && !existingAdvices.has(a.toLowerCase())
   );
-  if (newAdvices.length > 0) {
+
+  // Learn new diagnoses → add to predefined list if not already there
+  const existingDiagnoses = new Set(
+    (settings.prescription.predefinedDiagnoses ?? []).map((d) => d.toLowerCase())
+  );
+  const newDiagnoses = (data.diagnoses ?? []).filter(
+    (d) => d.trim() && !existingDiagnoses.has(d.toLowerCase())
+  );
+
+  if (newAdvices.length > 0 || newDiagnoses.length > 0) {
     await saveSettings({
       ...settings,
       prescription: {
@@ -134,6 +145,10 @@ export async function learnFromConsultationAction(data: {
         predefinedAdvices: [
           ...settings.prescription.predefinedAdvices,
           ...newAdvices,
+        ],
+        predefinedDiagnoses: [
+          ...(settings.prescription.predefinedDiagnoses ?? []),
+          ...newDiagnoses,
         ],
       },
     });
@@ -147,4 +162,25 @@ export async function learnFromConsultationAction(data: {
     if (found.length > 0) continue; // already known
     await addCustomMedicine(med);
   }
+}
+
+export async function markConsultationSupersededAction(
+  patientId: string,
+  consultationId: string
+): Promise<{ ok: boolean }> {
+  await requireSession();
+  const ok = await markConsultationSuperseded(patientId, consultationId);
+  revalidatePath(`/admin/patients/${patientId}`);
+  return { ok };
+}
+
+export async function findPatientByPhoneAction(
+  phone: string
+): Promise<{ id?: string; name?: string }> {
+  await requireSession();
+  const patient = await findByPhone(phone);
+  if (patient) {
+    return { id: patient.id, name: patient.name };
+  }
+  return {};
 }

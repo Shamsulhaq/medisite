@@ -25,6 +25,7 @@ export default async function DashboardHome() {
     getPatients(),
   ]);
 
+  const todayStr = new Date().toISOString().split("T")[0];
   const todayCount = filterAppointments(appointments, "today").length;
   const upcomingCount = filterAppointments(appointments, "upcoming").length;
   const pendingCount = appointments.filter((a) => a.status === "pending").length;
@@ -61,6 +62,16 @@ export default async function DashboardHome() {
     },
   ];
 
+  // Today's revenue from consultation payments
+  const todaysRevenue = patients.reduce((sum, p) => {
+    for (const con of p.consultations) {
+      if (con.date === todayStr && con.payment) {
+        sum += con.payment.received;
+      }
+    }
+    return sum;
+  }, 0);
+
   const quickActions = [
     {
       label: "Write a new post",
@@ -75,6 +86,12 @@ export default async function DashboardHome() {
       href: "/admin/patients",
     },
     {
+      label: "View Reports",
+      description: "Analytics & charts",
+      icon: "grid",
+      href: "/admin/reports",
+    },
+    {
       label: "Edit site content",
       description: "Branding, text & translations",
       icon: "settings",
@@ -87,7 +104,6 @@ export default async function DashboardHome() {
     .slice(0, 5);
 
   // Today's appointments (for new section)
-  const todayStr = new Date().toISOString().split("T")[0];
   const todaysAppointments = appointments
     .filter((a) => a.date === todayStr)
     .sort((a, b) => (a.time < b.time ? -1 : 1));
@@ -172,6 +188,19 @@ export default async function DashboardHome() {
             <p className="mt-1 text-sm text-muted">{s.label}</p>
           </Link>
         ))}
+      </div>
+
+      {/* Today's Revenue */}
+      <div className="mt-4 rounded-xl border border-green-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg text-green-600 bg-green-50">
+            <AdminIcon name="check" className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-2xl font-bold text-ink">৳{todaysRevenue}</p>
+            <p className="text-sm text-muted">Today&apos;s Revenue (received)</p>
+          </div>
+        </div>
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
