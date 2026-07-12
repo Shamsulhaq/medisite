@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------------
 
 import prisma from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import type { MedicineRef } from "./medicines";
 import { MEDICINES as BUILT_IN } from "./medicines";
 
@@ -51,7 +52,7 @@ export async function getMedicineDB(): Promise<MedicineRef[]> {
 
 export async function saveMedicineDB(medicines: MedicineRef[]): Promise<void> {
   // Replace entire medicine DB — transaction for consistency
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.medicine.deleteMany();
     for (const med of medicines) {
       await tx.medicine.create({

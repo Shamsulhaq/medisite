@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import AdmZip from "adm-zip";
 import prisma from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
     // Execute restore in a transaction
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Delete in reverse dependency order
       await tx.auditLog.deleteMany();
       await tx.uploadSession.deleteMany();
