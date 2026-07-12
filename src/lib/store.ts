@@ -245,16 +245,29 @@ function normalizePost(raw: any): BlogPost {
 // ---- Settings (PostgreSQL) -------------------------------------------------
 
 export async function getSettings(): Promise<SiteSettings> {
-  const row = await prisma.setting.findUnique({ where: { id: "main" } });
-  if (!row) {
-    // First run — seed with defaults
-    const normalized = normalizeSettings(defaultSettings);
-    await prisma.setting.create({
-      data: { id: "main", data: normalized as unknown as object },
-    });
-    return normalized;
+  try {
+    const row = await prisma.setting.findUnique({ where: { id: "main" } });
+    if (!row) {
+      // First run — seed with defaults
+      const normalized = normalizeSettings(defaultSettings);
+      await prisma.setting.create({
+        data: { id: "main", data: normalized as unknown as object },
+      });
+      return normalized;
+    }
+    return normalizeSettings(row.data);
+  } catch (err) {
+    // The database may be unreachable or not yet migrated — e.g. during a
+    // build-time prerender of error pages (/_not-found), in a CI/CD build
+    // stage without a live DB, or a transient outage. Site metadata and
+    // public content have sane defaults, so degrade gracefully instead of
+    // crashing the render/build. Writes (saveSettings) still surface errors.
+    console.error(
+      "[getSettings] database unavailable, falling back to default settings:",
+      err instanceof Error ? err.message : err
+    );
+    return normalizeSettings(defaultSettings);
   }
-  return normalizeSettings(row.data);
 }
 
 export async function saveSettings(settings: SiteSettings): Promise<void> {
