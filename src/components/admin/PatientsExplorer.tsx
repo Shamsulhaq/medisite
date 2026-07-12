@@ -1,62 +1,77 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import type { Patient } from "@/lib/patients";
-import type { Appointment } from "@/lib/types";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { PatientListItem } from "@/lib/patients";
 import AdminIcon from "@/components/admin/AdminIcon";
+import Pagination from "@/components/admin/Pagination";
 import { Badge } from "@/components/admin/ui";
 
 const control =
   "rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
 
+interface Filters {
+  q: string;
+  gender: string;
+  from: string;
+  to: string;
+  sort: string;
+}
+
 export default function PatientsExplorer({
-  patients,
-  importable,
+  items,
+  total,
+  page,
+  perPage,
+  totalPages,
+  importableCount,
+  filters,
 }: {
-  patients: Patient[];
-  importable: Appointment[];
+  items: PatientListItem[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  importableCount: number;
+  filters: Filters;
 }) {
-  const [search, setSearch] = useState("");
-  const [gender, setGender] = useState<"all" | "Male" | "Female" | "Other">(
-    "all"
-  );
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [sortBy, setSortBy] = useState<"lastVisit" | "name" | "patientId" | "created">("lastVisit");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
-  const filtered = useMemo(() => {
-    const list = patients.filter((p) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.phone.includes(q) ||
-        p.patientId.toLowerCase().includes(q) ||
-        p.email.toLowerCase().includes(q);
-      const matchGender = gender === "all" || p.gender === gender;
-      const matchFrom = !from || p.createdAt.slice(0, 10) >= from;
-      const matchTo = !to || p.createdAt.slice(0, 10) <= to;
-      return matchSearch && matchGender && matchFrom && matchTo;
+  // Local text-search state so typing is smooth; other filters apply on change.
+  const [search, setSearch] = useState(filters.q);
+  useEffect(() => setSearch(filters.q), [filters.q]);
+
+  // Push updated filters to the URL. Resets to page 1 whenever a filter
+  // changes (page is only preserved by the Pagination control itself).
+  const applyFilters = (patch: Partial<Filters>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    const next: Filters = { ...filters, ...patch };
+    const setOrDelete = (key: keyof Filters, val: string, def: string) => {
+      if (val && val !== def) params.set(key, val);
+      else params.delete(key);
+    };
+    setOrDelete("q", next.q, "");
+    setOrDelete("gender", next.gender, "all");
+    setOrDelete("from", next.from, "");
+    setOrDelete("to", next.to, "");
+    setOrDelete("sort", next.sort, "lastVisit");
+    params.delete("page"); // any filter change returns to the first page
+    startTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`);
     });
+  };
 
-    const sorted = [...list];
-    switch (sortBy) {
-      case "lastVisit":
-        sorted.sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt));
-        break;
-      case "name":
-        sorted.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case "patientId":
-        sorted.sort((a, b) => a.patientId.localeCompare(b.patientId));
-        break;
-      case "created":
-        sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        break;
-    }
-    return sorted;
-  }, [patients, search, gender, from, to, sortBy]);
+  // Debounce the free-text search box.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => applyFilters({ q: value }), 350);
+  };
 
   return (
     <div>
@@ -69,15 +84,15 @@ export default function PatientsExplorer({
               type="text"
               placeholder="Name, phone, ID, email..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => onSearchChange(e.target.value)}
               className={control}
             />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Gender</span>
             <select
-              value={gender}
-              onChange={(e) => setGender(e.target.value as typeof gender)}
+              value={filters.gender}
+              onChange={(e) => applyFilters({ gender: e.target.value })}
               className={control}
             >
               <option value="all">All</option>
@@ -90,8 +105,8 @@ export default function PatientsExplorer({
             <span className="text-xs font-medium text-muted">Added from</span>
             <input
               type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              value={filters.from}
+              onChange={(e) => applyFilters({ from: e.target.value })}
               className={control}
             />
           </label>
@@ -99,16 +114,16 @@ export default function PatientsExplorer({
             <span className="text-xs font-medium text-muted">Added to</span>
             <input
               type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
+              value={filters.to}
+              onChange={(e) => applyFilters({ to: e.target.value })}
               className={control}
             />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Sort by</span>
             <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              value={filters.sort}
+              onChange={(e) => applyFilters({ sort: e.target.value })}
               className={control}
             >
               <option value="lastVisit">Last Visit</option>
@@ -118,18 +133,18 @@ export default function PatientsExplorer({
             </select>
           </label>
           <span className="ml-auto self-end text-xs text-muted">
-            {filtered.length} result{filtered.length === 1 ? "" : "s"}
+            {isPending ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
           </span>
         </div>
       </div>
 
       {/* Import banner */}
-      {importable.length > 0 && (
+      {importableCount > 0 && (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-brand-light bg-brand-light/30 px-4 py-3">
           <p className="text-sm text-brand-dark">
-            <strong>{importable.length}</strong> appointment
-            {importable.length === 1 ? "" : "s"} can be imported as new patient
-            {importable.length === 1 ? "" : "s"}.
+            <strong>{importableCount}</strong> appointment
+            {importableCount === 1 ? "" : "s"} can be imported as new patient
+            {importableCount === 1 ? "" : "s"}.
           </p>
           <Link
             href="/admin/patients/new"
@@ -141,9 +156,9 @@ export default function PatientsExplorer({
       )}
 
       {/* List */}
-      {filtered.length === 0 ? (
+      {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center text-sm text-muted">
-          {patients.length === 0
+          {total === 0 && !filters.q && filters.gender === "all" && !filters.from && !filters.to
             ? "No patients yet. Add one to get started."
             : "No patients match your filters."}
         </div>
@@ -162,19 +177,14 @@ export default function PatientsExplorer({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="transition hover:bg-slate-50/60"
-                  >
+                {items.map((p) => (
+                  <tr key={p.id} className="transition hover:bg-slate-50/60">
                     <td className="px-5 py-3">
                       <Badge tone="brand">{p.patientId}</Badge>
                     </td>
                     <td className="px-5 py-3">
                       <p className="font-medium text-ink">{p.name}</p>
-                      {p.email && (
-                        <p className="text-xs text-muted">{p.email}</p>
-                      )}
+                      {p.email && <p className="text-xs text-muted">{p.email}</p>}
                     </td>
                     <td className="px-5 py-3 text-muted">{p.phone}</td>
                     <td className="px-5 py-3 text-muted">
@@ -183,10 +193,12 @@ export default function PatientsExplorer({
                     <td className="px-5 py-3">
                       <div className="flex flex-wrap gap-1.5 text-xs text-muted">
                         <span className="rounded bg-slate-100 px-1.5 py-0.5">
-                          {p.consultations.length} consultation{p.consultations.length !== 1 ? "s" : ""}
+                          {p.consultationCount} consultation
+                          {p.consultationCount !== 1 ? "s" : ""}
                         </span>
                         <span className="rounded bg-slate-100 px-1.5 py-0.5">
-                          {p.testReports.length} test{p.testReports.length !== 1 ? "s" : ""}
+                          {p.testReportCount} test
+                          {p.testReportCount !== 1 ? "s" : ""}
                         </span>
                       </div>
                     </td>
@@ -206,6 +218,8 @@ export default function PatientsExplorer({
           </div>
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} total={total} perPage={perPage} />
     </div>
   );
 }

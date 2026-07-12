@@ -7,6 +7,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyCredentials, getUserByUsername } from "@/lib/auth";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import authConfig from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -19,7 +20,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
+        // Brute-force guard: max 5 login attempts per 30 minutes per IP.
+        // The login is a public, unauthenticated endpoint and the primary
+        // target for credential-stuffing/brute-force attacks.
+        const ip = getClientIp(request as unknown as Request);
+        const rl = rateLimit(`login:${ip}`, 5, 30 * 60 * 1000);
+        if (!rl.ok) {
+          throw new Error(
+            "Too many login attempts. Please try again in about 30 minutes."
+          );
+        }
+
         const username = credentials?.username as string | undefined;
         const password = credentials?.password as string | undefined;
 

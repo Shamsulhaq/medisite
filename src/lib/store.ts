@@ -5,6 +5,7 @@
 
 import crypto from "crypto";
 import prisma from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import type {
   BlogPost,
   SiteSettings,
@@ -329,30 +330,105 @@ function dbPostToType(row: {
   };
 }
 
-export async function getPosts(): Promise<BlogPost[]> {
-  const rows = await prisma.blogPost.findMany({ orderBy: { date: "desc" } });
-  if (rows.length === 0) {
-    // Seed default posts on first run
-    const posts = defaultPosts.map(normalizePost);
-    for (const p of posts) {
-      await prisma.blogPost.create({
-        data: {
-          id: p.id,
-          slug: p.slug,
-          title: p.title as unknown as object,
-          excerpt: p.excerpt as unknown as object,
-          body: p.body as unknown as object,
-          date: p.date,
-          readingMinutes: p.readingMinutes,
-          tags: p.tags,
-          coverImage: p.coverImage ?? "",
-          published: p.published,
-        },
-      });
-    }
-    return posts;
+// Seed default posts on first run (when the table is empty). Extracted so both
+// getPosts and getPostsPage trigger it, preserving the original first-run
+// seeding behavior of the admin posts list.
+async function seedDefaultPostsIfEmpty(): Promise<void> {
+  const count = await prisma.blogPost.count();
+  if (count > 0) return;
+  const posts = defaultPosts.map(normalizePost);
+  for (const p of posts) {
+    await prisma.blogPost.create({
+      data: {
+        id: p.id,
+        slug: p.slug,
+        title: p.title as unknown as object,
+        excerpt: p.excerpt as unknown as object,
+        body: p.body as unknown as object,
+        date: p.date,
+        readingMinutes: p.readingMinutes,
+        tags: p.tags,
+        coverImage: p.coverImage ?? "",
+        published: p.published,
+      },
+    });
   }
+}
+
+export async function getPosts(): Promise<BlogPost[]> {
+  await seedDefaultPostsIfEmpty();
+  const rows = await prisma.blogPost.findMany({ orderBy: { date: "desc" } });
   return rows.map(dbPostToType);
+}
+
+// ---- Paginated post list (scalable) ----------------------------------------
+// DB-level pagination + filtering for the admin posts list, mirroring
+// getPatientsPage in patients.ts — never loads every post just to render one
+// page of the table.
+
+export type PostStatusFilter = "all" | "published" | "draft";
+
+export interface PostsQuery {
+  page?: number;
+  perPage?: number;
+  q?: string;
+  status?: PostStatusFilter;
+}
+
+export interface PostsPageResult {
+  items: BlogPost[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+
+export async function getPostsPage(
+  query: PostsQuery = {}
+): Promise<PostsPageResult> {
+  await seedDefaultPostsIfEmpty();
+
+  const page = Math.max(1, Math.floor(query.page ?? 1));
+  const perPage = Math.min(100, Math.max(5, Math.floor(query.perPage ?? 20)));
+
+  const and: Prisma.BlogPostWhereInput[] = [];
+  const q = query.q?.trim();
+  if (q) {
+    // NOTE: title/excerpt/body are Json columns and cannot be text-searched at
+    // the DB level. Server-side search can only target the string columns
+    // `slug` and `category`.
+    and.push({
+      OR: [
+        { slug: { contains: q, mode: "insensitive" } },
+        { category: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+  if (query.status === "published") {
+    and.push({ published: true });
+  } else if (query.status === "draft") {
+    // "draft" covers all unpublished posts (both plain drafts and scheduled).
+    and.push({ published: false });
+  }
+  const where: Prisma.BlogPostWhereInput = and.length ? { AND: and } : {};
+
+  const [rows, total] = await Promise.all([
+    prisma.blogPost.findMany({
+      where,
+      orderBy: { date: "desc" }, // matches getPosts
+      skip: (page - 1) * perPage,
+      take: perPage,
+    }),
+    prisma.blogPost.count({ where }),
+  ]);
+
+  return {
+    items: rows.map(dbPostToType),
+    total,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
+  };
 }
 
 export async function getPublishedPosts(): Promise<BlogPost[]> {

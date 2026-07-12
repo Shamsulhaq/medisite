@@ -146,6 +146,22 @@ export default function AvailabilityEditor({
 
                 {day.enabled && (
                   <div className="mt-2 space-y-2 pl-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted">
+                        Max patients / day
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={day.maxPerDay ?? 0}
+                        onChange={(e) =>
+                          setDay(i, { maxPerDay: Number(e.target.value) || 0 })
+                        }
+                        className={`${timeInput} w-24`}
+                      />
+                      <span className="text-xs text-muted">(0 = no limit)</span>
+                    </div>
                     {day.ranges.length === 0 && (
                       <p className="text-xs text-muted">
                         No hours set — add a time window.

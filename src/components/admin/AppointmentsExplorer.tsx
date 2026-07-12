@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Appointment, Availability } from "@/lib/types";
+import type { AppointmentsQuery } from "@/lib/appointments";
 import { downloadCSV, downloadExcel, openPrintPDF } from "@/lib/export";
 import { todayInBD } from "@/lib/utils";
 import AppointmentsManager from "@/components/admin/AppointmentsManager";
+import Pagination from "@/components/admin/Pagination";
 
 type RangeMode = "all" | "today" | "upcoming" | "past" | "custom";
 
@@ -15,6 +18,15 @@ function todayStr(): string {
 const control =
   "rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
 
+interface Filters {
+  q: string;
+  range: RangeMode;
+  from: string;
+  to: string;
+  type: "all" | "online" | "offline";
+  chamber: string;
+}
+
 export default function AppointmentsExplorer({
   appointments,
   chambers,
@@ -22,6 +34,12 @@ export default function AppointmentsExplorer({
   userId,
   userName,
   isDoctor,
+  total,
+  page,
+  perPage,
+  totalPages,
+  filters,
+  exportAppointments,
 }: {
   appointments: Appointment[];
   chambers: string[];
@@ -29,48 +47,50 @@ export default function AppointmentsExplorer({
   userId?: string;
   userName?: string;
   isDoctor?: boolean;
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  filters: Filters;
+  exportAppointments: (query: AppointmentsQuery) => Promise<Appointment[]>;
 }) {
-  const [range, setRange] = useState<RangeMode>("upcoming");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [type, setType] = useState<"all" | "online" | "offline">("all");
-  const [chamber, setChamber] = useState<string>("all");
-  const [search, setSearch] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
-  const today = todayStr();
+  // Local text-search state so typing is smooth; other filters apply on change.
+  const [search, setSearch] = useState(filters.q);
+  useEffect(() => setSearch(filters.q), [filters.q]);
 
-  const filtered = useMemo(() => {
-    const bySearch = (a: Appointment) => {
-      if (!search.trim()) return true;
-      const q = search.toLowerCase();
-      return a.name.toLowerCase().includes(q) || a.phone.includes(q);
+  // Push updated filters to the URL. Resets to page 1 whenever a filter
+  // changes (page is only preserved by the Pagination control itself).
+  const applyFilters = (patch: Partial<Filters>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    const next: Filters = { ...filters, ...patch };
+    const setOrDelete = (key: keyof Filters, val: string, def: string) => {
+      if (val && val !== def) params.set(key, val);
+      else params.delete(key);
     };
-    const byRange = (a: Appointment) => {
-      switch (range) {
-        case "today":
-          return a.date === today;
-        case "upcoming":
-          return a.date >= today;
-        case "past":
-          return a.date < today;
-        case "custom":
-          return (!from || a.date >= from) && (!to || a.date <= to);
-        case "all":
-        default:
-          return true;
-      }
-    };
-    const byType = (a: Appointment) => type === "all" || a.mode === type;
-    const byChamber = (a: Appointment) =>
-      chamber === "all" || (a.mode === "offline" && a.location === chamber);
+    setOrDelete("q", next.q, "");
+    setOrDelete("range", next.range, "today");
+    setOrDelete("from", next.from, "");
+    setOrDelete("to", next.to, "");
+    setOrDelete("type", next.type, "all");
+    setOrDelete("chamber", next.chamber, "all");
+    params.delete("page"); // any filter change returns to the first page
+    startTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`);
+    });
+  };
 
-    return appointments
-      .filter((a) => bySearch(a) && byRange(a) && byType(a) && byChamber(a))
-      .sort((a, b) => {
-        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-        return a.time < b.time ? -1 : 1;
-      });
-  }, [appointments, range, from, to, type, chamber, search, today]);
+  // Debounce the free-text search box.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => applyFilters({ q: value }), 350);
+  };
 
   const EXPORT_HEADERS = [
     "Name",
@@ -85,8 +105,8 @@ export default function AppointmentsExplorer({
     "Requested",
   ];
 
-  const exportRows = () =>
-    filtered.map((a) => [
+  const toRows = (rows: Appointment[]) =>
+    rows.map((a) => [
       a.name,
       a.phone,
       a.email,
@@ -101,6 +121,29 @@ export default function AppointmentsExplorer({
 
   const stamp = todayStr();
 
+  // Exports fetch ALL rows matching the current filters (not just this page).
+  const [exporting, setExporting] = useState(false);
+  const currentQuery = (): AppointmentsQuery => ({
+    q: filters.q,
+    range: filters.range,
+    from: filters.from,
+    to: filters.to,
+    type: filters.type,
+    chamber: filters.chamber,
+  });
+  const withExportRows = async (
+    run: (rows: (string | number)[][]) => void
+  ) => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all = await exportAppointments(currentQuery());
+      run(toRows(all));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       {/* Filter + export bar */}
@@ -108,15 +151,15 @@ export default function AppointmentsExplorer({
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-[180px] flex-1 flex-col gap-1">
             <span className="text-xs font-medium text-muted">Search</span>
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Name or phone..."
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Period</span>
             <select
-              value={range}
-              onChange={(e) => setRange(e.target.value as RangeMode)}
+              value={filters.range}
+              onChange={(e) => applyFilters({ range: e.target.value as RangeMode })}
               className={control}
             >
               <option value="all">All</option>
@@ -127,14 +170,14 @@ export default function AppointmentsExplorer({
             </select>
           </label>
 
-          {range === "custom" && (
+          {filters.range === "custom" && (
             <>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted">From</span>
                 <input
                   type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  value={filters.from}
+                  onChange={(e) => applyFilters({ from: e.target.value })}
                   className={control}
                 />
               </label>
@@ -142,8 +185,8 @@ export default function AppointmentsExplorer({
                 <span className="text-xs font-medium text-muted">To</span>
                 <input
                   type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
+                  value={filters.to}
+                  onChange={(e) => applyFilters({ to: e.target.value })}
                   className={control}
                 />
               </label>
@@ -153,9 +196,11 @@ export default function AppointmentsExplorer({
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Type</span>
             <select
-              value={type}
+              value={filters.type}
               onChange={(e) =>
-                setType(e.target.value as "all" | "online" | "offline")
+                applyFilters({
+                  type: e.target.value as "all" | "online" | "offline",
+                })
               }
               className={control}
             >
@@ -168,9 +213,9 @@ export default function AppointmentsExplorer({
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Chamber</span>
             <select
-              value={chamber}
-              onChange={(e) => setChamber(e.target.value)}
-              disabled={type === "online"}
+              value={filters.chamber}
+              onChange={(e) => applyFilters({ chamber: e.target.value })}
+              disabled={filters.type === "online"}
               className={`${control} disabled:bg-slate-50 disabled:text-slate-400`}
             >
               <option value="all">All chambers</option>
@@ -185,44 +230,41 @@ export default function AppointmentsExplorer({
           {/* Export */}
           <div className="ml-auto flex items-end gap-2">
             <span className="mb-1 text-xs text-muted">
-              {filtered.length} result{filtered.length === 1 ? "" : "s"}
+              {isPending ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
             </span>
             <button
               type="button"
+              disabled={exporting}
               onClick={() =>
-                downloadCSV(
-                  EXPORT_HEADERS,
-                  exportRows(),
-                  `appointments-${stamp}.csv`
+                withExportRows((rows) =>
+                  downloadCSV(EXPORT_HEADERS, rows, `appointments-${stamp}.csv`)
                 )
               }
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               CSV
             </button>
             <button
               type="button"
+              disabled={exporting}
               onClick={() =>
-                downloadExcel(
-                  EXPORT_HEADERS,
-                  exportRows(),
-                  `appointments-${stamp}.xls`
+                withExportRows((rows) =>
+                  downloadExcel(EXPORT_HEADERS, rows, `appointments-${stamp}.xls`)
                 )
               }
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Excel
             </button>
             <button
               type="button"
+              disabled={exporting}
               onClick={() =>
-                openPrintPDF(
-                  "Appointments",
-                  EXPORT_HEADERS,
-                  exportRows()
+                withExportRows((rows) =>
+                  openPrintPDF("Appointments", EXPORT_HEADERS, rows)
                 )
               }
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               PDF
             </button>
@@ -230,7 +272,9 @@ export default function AppointmentsExplorer({
         </div>
       </div>
 
-      <AppointmentsManager appointments={filtered} availability={availability} userId={userId} userName={userName} isDoctor={isDoctor} />
+      <AppointmentsManager appointments={appointments} availability={availability} userId={userId} userName={userName} isDoctor={isDoctor} />
+
+      <Pagination page={page} totalPages={totalPages} total={total} perPage={perPage} />
     </div>
   );
 }

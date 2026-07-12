@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMedicineDB } from "@/lib/medicine-db";
+import { getMedicinesPage } from "@/lib/medicine-db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,17 +8,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const perPage = Math.min(100, Math.max(10, Number(searchParams.get("per") ?? 50)));
-  const alpha = (searchParams.get("alpha") ?? "").toLowerCase();
+  const alpha = searchParams.get("alpha") ?? "";
 
-  const db = await getMedicineDB();
+  // DB-level pagination: only the requested page is loaded from the database
+  // (previously the entire medicine table was loaded and sliced in memory).
+  const { items, total, totalPages, page: current, perPage: per } =
+    await getMedicinesPage({ page, perPage, alpha });
 
-  const filtered = alpha
-    ? db.filter((m) => m.generic.toLowerCase().startsWith(alpha))
-    : db;
-
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / perPage);
-  const items = filtered.slice((page - 1) * perPage, page * perPage);
-
-  return NextResponse.json({ items, total, page, totalPages, perPage });
+  return NextResponse.json({ items, total, page: current, totalPages, perPage: per });
 }

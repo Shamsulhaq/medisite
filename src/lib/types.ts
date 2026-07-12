@@ -31,7 +31,11 @@ export type Experience = {
 export type MenuItem = { href: string; label: LS };
 
 export type TimeRange = { start: string; end: string }; // "HH:MM" 24-hour
-export type DayAvailability = { enabled: boolean; ranges: TimeRange[] };
+export type DayAvailability = {
+  enabled: boolean;
+  ranges: TimeRange[];
+  maxPerDay?: number; // max total patients that weekday (0/undefined = no limit)
+};
 export type Availability = {
   slotMinutes: number; // length of each appointment slot
   maxPerSlot: number; // max patients per slot (default 10)

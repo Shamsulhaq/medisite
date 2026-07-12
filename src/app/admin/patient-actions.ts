@@ -14,7 +14,7 @@ import {
   type PatientInfoInput,
   type RecordKind,
 } from "@/lib/patients";
-import { getAppointments } from "@/lib/appointments";
+import { getAppointments, addAppointment, type AppointmentStatus } from "@/lib/appointments";
 import { getSettings, saveSettings } from "@/lib/store";
 import { addCustomMedicine } from "@/lib/custom-medicines";
 import { searchMedicines } from "@/lib/medicines";
@@ -415,6 +415,73 @@ export async function clearPendingVitalsAction(
     return { ok: true };
   } catch (err) {
     return { ok: false, error: "Failed to clear vitals. Please try again." };
+  }
+}
+
+// ---- Create Appointment Action (staff creating on behalf of a patient) ----
+
+export async function createAppointmentAction(input: {
+  name: string;
+  phone: string;
+  email?: string;
+  mode: "online" | "offline";
+  location?: string;
+  date: string;
+  time: string;
+  reason?: string;
+  status?: "pending" | "confirmed";
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    await requireSession();
+    await requirePermission("canConfirmAppointment");
+
+    const name = input.name?.trim();
+    const phone = input.phone?.trim();
+    if (!name) return { ok: false, error: "Patient name is required." };
+    if (!phone) return { ok: false, error: "Phone number is required." };
+    if (!input.date) return { ok: false, error: "Date is required." };
+    if (!input.time?.trim()) return { ok: false, error: "Time is required." };
+
+    const mode = input.mode === "online" ? "online" : "offline";
+    const location =
+      mode === "online" ? "Online" : input.location?.trim() || "";
+    // Staff-created appointments default to "confirmed" (they are scheduled
+    // directly, not a self-service request awaiting confirmation).
+    const status: AppointmentStatus =
+      input.status === "pending" ? "pending" : "confirmed";
+
+    const appt = await addAppointment(
+      {
+        name,
+        phone,
+        email: input.email?.trim() || "",
+        mode,
+        location,
+        date: input.date,
+        time: input.time.trim(),
+        reason: input.reason?.trim() || "",
+      },
+      status
+    );
+
+    revalidatePath("/admin/appointments");
+
+    const current = await getCurrentUser();
+    if (current) {
+      await logAudit(current.id, "CREATE_APPOINTMENT", "appointment", appt.id, {
+        name,
+        phone,
+        date: input.date,
+        time: input.time,
+        mode,
+        location,
+        status,
+      });
+    }
+
+    return { ok: true, id: appt.id };
+  } catch {
+    return { ok: false, error: "Failed to create appointment. Please try again." };
   }
 }
 

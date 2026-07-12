@@ -6,6 +6,7 @@
 
 import crypto from "crypto";
 import prisma from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 export type HistoryEntry = {
   id: string;
@@ -352,6 +353,135 @@ export async function getPatients(): Promise<Patient[]> {
     orderBy: { createdAt: "desc" },
   });
   return rows.map(dbPatientToType);
+}
+
+// ---- Paginated list (scalable) --------------------------------------------
+// A lightweight list row: no nested consultation/test-report records, just
+// their counts (via Prisma _count). Used by the paginated patients list so we
+// never load every patient's full clinical history just to render a table.
+
+export type PatientListItem = {
+  id: string;
+  patientId: string;
+  name: string;
+  phone: string;
+  email: string;
+  age: string;
+  gender: string;
+  createdAt: string;
+  updatedAt: string;
+  consultationCount: number;
+  testReportCount: number;
+};
+
+export type PatientSort = "lastVisit" | "name" | "patientId" | "created";
+
+export interface PatientsQuery {
+  page?: number;
+  perPage?: number;
+  q?: string;
+  gender?: string;
+  from?: string; // YYYY-MM-DD
+  to?: string; // YYYY-MM-DD
+  sort?: PatientSort;
+}
+
+export interface PatientsPageResult {
+  items: PatientListItem[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+
+export async function getPatientsPage(
+  query: PatientsQuery = {}
+): Promise<PatientsPageResult> {
+  const page = Math.max(1, Math.floor(query.page ?? 1));
+  const perPage = Math.min(100, Math.max(5, Math.floor(query.perPage ?? 20)));
+
+  const and: Prisma.PatientWhereInput[] = [];
+  const q = query.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q } },
+        { patientId: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+  if (query.gender && query.gender !== "all") {
+    and.push({ gender: query.gender });
+  }
+  if (query.from) {
+    and.push({ createdAt: { gte: new Date(`${query.from}T00:00:00.000`) } });
+  }
+  if (query.to) {
+    and.push({ createdAt: { lte: new Date(`${query.to}T23:59:59.999`) } });
+  }
+  const where: Prisma.PatientWhereInput = and.length ? { AND: and } : {};
+
+  const orderBy: Prisma.PatientOrderByWithRelationInput =
+    query.sort === "name"
+      ? { name: "asc" }
+      : query.sort === "patientId"
+        ? { patientId: "asc" }
+        : query.sort === "created"
+          ? { createdAt: "desc" }
+          : { updatedAt: "desc" }; // "lastVisit" (default)
+
+  const [rows, total] = await Promise.all([
+    prisma.patient.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * perPage,
+      take: perPage,
+      select: {
+        id: true,
+        patientId: true,
+        name: true,
+        phone: true,
+        email: true,
+        age: true,
+        gender: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { consultations: true, testReports: true } },
+      },
+    }),
+    prisma.patient.count({ where }),
+  ]);
+
+  const items: PatientListItem[] = rows.map((r) => ({
+    id: r.id,
+    patientId: r.patientId,
+    name: r.name,
+    phone: r.phone,
+    email: r.email,
+    age: r.age,
+    gender: r.gender,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    consultationCount: r._count.consultations,
+    testReportCount: r._count.testReports,
+  }));
+
+  return {
+    items,
+    total,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
+  };
+}
+
+// Lightweight: just the phone column for every patient (used to compute which
+// appointments can be imported as new patients, without loading full records).
+export async function getPatientPhones(): Promise<string[]> {
+  const rows = await prisma.patient.findMany({ select: { phone: true } });
+  return rows.map((r) => r.phone);
 }
 
 export async function getPatientById(id: string): Promise<Patient | undefined> {

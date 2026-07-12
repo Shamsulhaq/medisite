@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import crypto from "crypto";
 import prisma from "@/lib/db";
+import { rateLimit, getClientIp, rateLimitHeaders } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,14 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const rl = rateLimit(`upload:${getClientIp(request)}`, 50, 10 * 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Too many upload attempts. Please wait and try again." },
+      { status: 429, headers: rateLimitHeaders(rl) }
+    );
+  }
+
   const { token } = await params;
 
   // Find session

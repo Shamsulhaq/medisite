@@ -56,6 +56,10 @@ export function normalizeAvailability(raw: unknown): Availability {
           ranges: Array.isArray(d?.ranges)
             ? (d!.ranges as unknown[]).map(toRange)
             : [],
+          maxPerDay:
+            typeof d?.maxPerDay === "number" && d.maxPerDay > 0
+              ? d.maxPerDay
+              : 0,
         };
       })
     : defaultAvailability.week;
@@ -109,6 +113,20 @@ export function isHoliday(availability: Availability, dateStr: string): boolean 
 export function weekdayName(dateStr: string): string {
   const d = parseLocalDate(dateStr);
   return d ? WEEKDAYS[d.getDay()] : "";
+}
+
+/**
+ * Maximum total patients allowed for the weekday of `dateStr`.
+ * Returns 0 when there is no limit configured.
+ */
+export function dayMaxPatients(
+  availability: Availability,
+  dateStr: string
+): number {
+  const d = parseLocalDate(dateStr);
+  if (!d) return 0;
+  const day = availability.week[d.getDay()];
+  return day?.maxPerDay && day.maxPerDay > 0 ? day.maxPerDay : 0;
 }
 
 /**

@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------------
 
 import prisma from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import type { MedicineRef } from "./medicines";
 import { MEDICINES as BUILT_IN } from "./medicines";
 
@@ -47,6 +48,53 @@ export async function getMedicineDB(): Promise<MedicineRef[]> {
   }
   const rows = await prisma.medicine.findMany({ orderBy: { generic: "asc" } });
   return rows.map(dbRowToRef);
+}
+
+// ---- Paginated list (DB-level) --------------------------------------------
+
+export interface MedicinesPageResult {
+  items: MedicineRef[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+
+export async function getMedicinesPage(query: {
+  page?: number;
+  perPage?: number;
+  alpha?: string; // first-letter filter on generic name
+} = {}): Promise<MedicinesPageResult> {
+  // Preserve first-run seeding behavior.
+  if ((await prisma.medicine.count()) === 0) {
+    await getMedicineDB();
+  }
+
+  const page = Math.max(1, Math.floor(query.page ?? 1));
+  const perPage = Math.min(100, Math.max(10, Math.floor(query.perPage ?? 50)));
+  const alpha = query.alpha?.toLowerCase().trim();
+
+  const where: Prisma.MedicineWhereInput = alpha
+    ? { generic: { startsWith: alpha, mode: "insensitive" } }
+    : {};
+
+  const [rows, total] = await Promise.all([
+    prisma.medicine.findMany({
+      where,
+      orderBy: { generic: "asc" },
+      skip: (page - 1) * perPage,
+      take: perPage,
+    }),
+    prisma.medicine.count({ where }),
+  ]);
+
+  return {
+    items: rows.map(dbRowToRef),
+    total,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
+  };
 }
 
 export async function saveMedicineDB(medicines: MedicineRef[]): Promise<void> {

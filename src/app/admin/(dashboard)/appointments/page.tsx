@@ -1,9 +1,13 @@
-import Link from "next/link";
-import { getAppointments } from "@/lib/appointments";
+import {
+  getAppointmentsPage,
+  getAppointmentsForExport,
+  type AppointmentRange,
+  type AppointmentsQuery,
+} from "@/lib/appointments";
 import { getSettings } from "@/lib/store";
 import { getCurrentUser } from "@/lib/rbac";
 import AppointmentsExplorer from "@/components/admin/AppointmentsExplorer";
-import AdminIcon from "@/components/admin/AdminIcon";
+import NewAppointmentModal from "@/components/admin/NewAppointmentModal";
 
 export const dynamic = "force-dynamic";
 
@@ -12,31 +16,75 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AdminAppointmentsPage() {
-  const [appointments, settings, currentUser] = await Promise.all([
-    getAppointments(),
+export default async function AdminAppointmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const str = (v: string | string[] | undefined) =>
+    (Array.isArray(v) ? v[0] : v) ?? "";
+
+  const query: AppointmentsQuery = {
+    page: Number(str(sp.page)) || 1,
+    q: str(sp.q),
+    // Default view is "today". Also accept the legacy `filter` param (used by
+    // the dashboard stat cards) as an alias for `range`.
+    range: (str(sp.range) || str(sp.filter) || "today") as AppointmentRange,
+    from: str(sp.from),
+    to: str(sp.to),
+    type: (str(sp.type) || "all") as "all" | "online" | "offline",
+    chamber: str(sp.chamber) || "all",
+  };
+
+  const [result, settings, currentUser] = await Promise.all([
+    getAppointmentsPage(query),
     getSettings(),
     getCurrentUser(),
   ]);
   const chamberNames = settings.appointment.chambers.map((c) => c.name);
   const defaultAvailability = settings.appointment.chambers[0]?.availability;
 
+  // Server action: fetch ALL rows matching the current filters so CSV/Excel/PDF
+  // exports include every match, not just the visible page.
+  async function exportAppointments(filters: AppointmentsQuery) {
+    "use server";
+    return getAppointmentsForExport(filters);
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-muted">{appointments.length} total request{appointments.length === 1 ? "" : "s"}</p>
-        <Link href="/admin/appointments/settings"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-ink transition hover:border-brand hover:text-brand">
-          <AdminIcon name="settings" className="h-4 w-4" /> Configuration
-        </Link>
+        <p className="text-sm text-muted">
+          {result.total} request{result.total === 1 ? "" : "s"}
+        </p>
+        <div className="flex items-center gap-2">
+          <NewAppointmentModal
+            chambers={chamberNames}
+            onlineEnabled={settings.appointment.online.enabled}
+          />
+        </div>
       </div>
       <AppointmentsExplorer
-        appointments={appointments}
+        appointments={result.items}
         chambers={chamberNames}
         availability={defaultAvailability}
         userId={currentUser?.id}
         userName={currentUser?.displayName || currentUser?.username}
         isDoctor={currentUser?.role === "DOCTOR"}
+        total={result.total}
+        page={result.page}
+        perPage={result.perPage}
+        totalPages={result.totalPages}
+        filters={{
+          q: query.q ?? "",
+          range: query.range ?? "today",
+          from: query.from ?? "",
+          to: query.to ?? "",
+          type: query.type ?? "all",
+          chamber: query.chamber ?? "all",
+        }}
+        exportAppointments={exportAppointments}
       />
     </div>
   );

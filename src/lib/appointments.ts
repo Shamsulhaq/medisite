@@ -4,6 +4,7 @@
 // -----------------------------------------------------------------------------
 
 import prisma from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { todayInBD } from "@/lib/utils";
 import type {
   Appointment,
@@ -53,8 +54,139 @@ export async function getAppointments(): Promise<Appointment[]> {
   return rows.map(dbRowToType);
 }
 
+// Lightweight: just phone numbers (used to compute importable-patient counts
+// without loading every appointment record).
+export async function getAppointmentPhones(): Promise<string[]> {
+  const rows = await prisma.appointment.findMany({ select: { phone: true } });
+  return rows.map((r) => r.phone);
+}
+
+// ---- Paginated list (scalable) --------------------------------------------
+// DB-level, server-side pagination + filtering so we never load every
+// appointment just to render the admin table. Mirrors getPatientsPage.
+
+export type AppointmentRange = "all" | "today" | "upcoming" | "past" | "custom";
+
+export interface AppointmentsQuery {
+  page?: number;
+  perPage?: number;
+  q?: string; // free-text search (name / phone)
+  range?: AppointmentRange;
+  from?: string; // YYYY-MM-DD (custom range start)
+  to?: string; // YYYY-MM-DD (custom range end)
+  type?: "all" | "online" | "offline";
+  chamber?: string; // chamber name, or "all"
+}
+
+export interface AppointmentsPageResult {
+  items: Appointment[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+
+// Shared Prisma where clause used by both the paginated list and the export
+// helper so both honour the exact same filters.
+function buildAppointmentsWhere(
+  query: AppointmentsQuery
+): Prisma.AppointmentWhereInput {
+  const and: Prisma.AppointmentWhereInput[] = [];
+
+  const q = query.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q } },
+      ],
+    });
+  }
+
+  // `date` is a lexically-sortable 'YYYY-MM-DD' string, so date-range filters
+  // use string gte/lt/lte comparisons directly on it.
+  const range = query.range ?? "today";
+  const today = todayInBD();
+  switch (range) {
+    case "today":
+      and.push({ date: today });
+      break;
+    case "upcoming":
+      and.push({ date: { gte: today } });
+      break;
+    case "past":
+      and.push({ date: { lt: today } });
+      break;
+    case "custom":
+      if (query.from) and.push({ date: { gte: query.from } });
+      if (query.to) and.push({ date: { lte: query.to } });
+      break;
+    case "all":
+    default:
+      break;
+  }
+
+  if (query.type && query.type !== "all") {
+    and.push({ mode: query.type });
+  }
+
+  if (query.chamber && query.chamber !== "all") {
+    // Chamber filter only applies to in-person appointments (matches location).
+    and.push({ mode: "offline", location: query.chamber });
+  }
+
+  return and.length ? { AND: and } : {};
+}
+
+// Display order for the list — date ascending, then time ascending (matches
+// the previous client-side sort in AppointmentsExplorer).
+const APPOINTMENTS_ORDER_BY: Prisma.AppointmentOrderByWithRelationInput[] = [
+  { date: "asc" },
+  { time: "asc" },
+];
+
+export async function getAppointmentsPage(
+  query: AppointmentsQuery = {}
+): Promise<AppointmentsPageResult> {
+  const page = Math.max(1, Math.floor(query.page ?? 1));
+  const perPage = Math.min(100, Math.max(5, Math.floor(query.perPage ?? 20)));
+  const where = buildAppointmentsWhere(query);
+
+  const [rows, total] = await Promise.all([
+    prisma.appointment.findMany({
+      where,
+      orderBy: APPOINTMENTS_ORDER_BY,
+      skip: (page - 1) * perPage,
+      take: perPage,
+    }),
+    prisma.appointment.count({ where }),
+  ]);
+
+  return {
+    items: rows.map(dbRowToType),
+    total,
+    page,
+    perPage,
+    totalPages: Math.max(1, Math.ceil(total / perPage)),
+  };
+}
+
+// All appointments matching a filter (no pagination) — used for CSV/Excel/PDF
+// exports so they contain every matching row, not just the visible page.
+export async function getAppointmentsForExport(
+  query: AppointmentsQuery = {}
+): Promise<Appointment[]> {
+  const where = buildAppointmentsWhere(query);
+  const rows = await prisma.appointment.findMany({
+    where,
+    orderBy: APPOINTMENTS_ORDER_BY,
+  });
+  return rows.map(dbRowToType);
+}
+
 export async function addAppointment(
-  input: AppointmentInput
+  input: AppointmentInput,
+  status: AppointmentStatus = "pending"
 ): Promise<Appointment> {
   const row = await prisma.appointment.create({
     data: {
@@ -66,7 +198,7 @@ export async function addAppointment(
       date: input.date,
       time: input.time,
       reason: input.reason || "",
-      status: "pending",
+      status,
     },
   });
   return dbRowToType(row);

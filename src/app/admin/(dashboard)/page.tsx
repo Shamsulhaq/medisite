@@ -38,14 +38,14 @@ export default async function DashboardHome() {
       value: todayCount,
       icon: "calendar",
       tone: "text-sky-600 bg-sky-50",
-      href: "/admin/appointments?filter=today",
+      href: "/admin/appointments?range=today",
     },
     {
       label: "Upcoming",
       value: upcomingCount,
       icon: "clock",
       tone: "text-brand bg-brand-light",
-      href: "/admin/appointments?filter=upcoming",
+      href: "/admin/appointments?range=upcoming",
     },
     {
       label: "Pending Requests",
