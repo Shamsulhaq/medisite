@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/fields";
 import { LocalizedField, LocalizedArea } from "@/components/admin/LocalizedField";
 import ImageUpload from "@/components/admin/ImageUpload";
+import ButtonSpinner from "@/components/admin/ButtonSpinner";
 
 const ICON_OPTIONS = [
   { value: "stethoscope", label: "Stethoscope" },
@@ -846,9 +847,10 @@ export default function SettingsForm({ initial }: { initial: SiteSettings }) {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save Settings"}
+            {saving && <ButtonSpinner />}
+            {saving ? "Saving…" : "Save Settings"}
           </button>
         </div>
       </div>

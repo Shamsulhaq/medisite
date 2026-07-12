@@ -279,100 +279,193 @@ export default async function DashboardHome() {
     );
   }
 
-  // DOCTOR DASHBOARD (existing)
+  // DOCTOR DASHBOARD (Today's Workflow)
+  const nextPatient = todaysAppointments.find(
+    (a) => a.status === "pending" || a.status === "confirmed"
+  );
+  // Try to find the patient record for the next appointment
+  const nextPatientRecord = nextPatient
+    ? patients.find(
+        (p) => p.phone.replace(/[\s\-()]/g, "") === nextPatient.phone.replace(/[\s\-()]/g, "")
+      )
+    : null;
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-ink">
-          Welcome back
+          Today&apos;s Workflow
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Here&apos;s what&apos;s happening across your site today.
+          {todayStr} · {todaysAppointments.length} appointments scheduled
         </p>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Next Patient Card */}
+      {nextPatient ? (
+        <div className="rounded-xl border-2 border-brand/30 bg-gradient-to-r from-brand-light/30 to-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-brand">Next Patient</p>
+              <h2 className="mt-1 text-xl font-bold text-ink">{nextPatient.name}</h2>
+              <p className="mt-0.5 text-sm text-muted">
+                {nextPatient.time} · {nextPatient.phone} · <Badge tone={STATUS_TONE[nextPatient.status] ?? "slate"}>{nextPatient.status}</Badge>
+              </p>
+            </div>
+            {nextPatientRecord ? (
+              <Link
+                href={`/admin/patients/${nextPatientRecord.id}`}
+                className="shrink-0 rounded-xl bg-brand px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-brand-dark hover:shadow-lg"
+              >
+                See Patient →
+              </Link>
+            ) : (
+              <Link
+                href="/admin/patients/new"
+                className="shrink-0 rounded-xl bg-brand px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-brand-dark hover:shadow-lg"
+              >
+                Add Patient →
+              </Link>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm text-muted">No pending patients remaining for today.</p>
+        </div>
+      )}
+
+      {/* Today's Queue */}
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="font-semibold text-ink">Today&apos;s Queue</h2>
+          <Link href="/admin/appointments?filter=today" className="text-sm font-medium text-brand hover:text-brand-dark">
+            View all →
+          </Link>
+        </div>
+        {todaysAppointments.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-muted">No appointments scheduled for today.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {todaysAppointments.map((a) => {
+              const patientRecord = patients.find(
+                (p) => p.phone.replace(/[\s\-()]/g, "") === a.phone.replace(/[\s\-()]/g, "")
+              );
+              return (
+                <li key={a.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <span className="w-14 shrink-0 text-xs font-medium text-muted">{a.time}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{a.name}</span>
+                  <Badge tone={STATUS_TONE[a.status] ?? "slate"}>{a.status}</Badge>
+                  {a.status === "pending" && patientRecord && (
+                    <Link href={`/admin/patients/${patientRecord.id}`} className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark">
+                      Start Visit
+                    </Link>
+                  )}
+                  {a.status === "confirmed" && patientRecord && (
+                    <Link href={`/admin/patients/${patientRecord.id}`} className="shrink-0 rounded-lg border border-brand bg-white px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-light">
+                      Open
+                    </Link>
+                  )}
+                  {a.status === "pending" && !patientRecord && (
+                    <Link href="/admin/patients/new" className="shrink-0 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-muted hover:bg-slate-200">
+                      Add Patient
+                    </Link>
+                  )}
+                  {a.status === "confirmed" && !patientRecord && (
+                    <Link href="/admin/patients/new" className="shrink-0 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-muted hover:bg-slate-200">
+                      Add Patient
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Stats Row (smaller) */}
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {stats.map((s) => (
           <Link
             key={s.label}
             href={s.href}
-            className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-md"
+            className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-md"
           >
-            <div className="flex items-center justify-between">
-              <span
-                className={`flex h-10 w-10 items-center justify-center rounded-lg ${s.tone}`}
-              >
-                <AdminIcon name={s.icon} className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${s.tone}`}>
+                <AdminIcon name={s.icon} className="h-4 w-4" />
               </span>
-              <AdminIcon
-                name="chevronRight"
-                className="h-4 w-4 text-slate-300 transition group-hover:text-brand"
-              />
+              <div>
+                <p className="text-xl font-bold text-ink">{s.value}</p>
+                <p className="text-xs text-muted">{s.label}</p>
+              </div>
             </div>
-            <p className="mt-4 text-3xl font-bold text-ink">{s.value}</p>
-            <p className="mt-1 text-sm text-muted">{s.label}</p>
           </Link>
         ))}
-      </div>
-
-      {/* Today's Revenue */}
-      <div className="mt-4 rounded-xl border border-green-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg text-green-600 bg-green-50">
-            <AdminIcon name="check" className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-2xl font-bold text-ink">৳{todaysRevenue}</p>
-            <p className="text-sm text-muted">Today&apos;s Revenue (received)</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        {/* Recent appointments */}
-        <div className="lg:col-span-2">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h2 className="font-semibold text-ink">Recent Appointments</h2>
-              <Link
-                href="/admin/appointments"
-                className="text-sm font-medium text-brand hover:text-brand-dark"
-              >
-                View all
-              </Link>
+        <div className="rounded-xl border border-green-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg text-green-600 bg-green-50">
+              <AdminIcon name="check" className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-xl font-bold text-ink">৳{todaysRevenue}</p>
+              <p className="text-xs text-muted">Today&apos;s Revenue</p>
             </div>
-            {recent.length === 0 ? (
-              <p className="px-5 py-10 text-center text-sm text-muted">
-                No appointment requests yet.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {recent.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center justify-between gap-4 px-5 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">
-                        {a.name}
-                      </p>
-                      <p className="truncate text-xs text-muted">
-                        {a.date} · {a.time}
-                      </p>
-                    </div>
-                    <Badge tone={STATUS_TONE[a.status] ?? "slate"}>
-                      {a.status}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
         </div>
+      </div>
 
-        {/* Quick actions */}
-        <div>
+      {/* Secondary: Recent Patients & Follow-ups */}
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        {/* Recent Patients */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h2 className="font-semibold text-ink">Recent Patients</h2>
+            <Link href="/admin/patients" className="text-sm font-medium text-brand hover:text-brand-dark">View all</Link>
+          </div>
+          {recentPatients.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-muted">No patients yet.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {recentPatients.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/admin/patients/${p.id}`} className="flex items-center justify-between gap-4 px-5 py-2.5 transition hover:bg-slate-50">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{p.name}</p>
+                      <p className="truncate text-xs text-muted">{p.patientId} · {p.phone}</p>
+                    </div>
+                    <span className="shrink-0 text-xs text-muted">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Pending Follow-ups */}
+        {pendingFollowups.length > 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-amber-100 px-5 py-4">
+              <h2 className="font-semibold text-ink">Pending Follow-ups</h2>
+              <span className="text-sm text-amber-600 font-medium">{pendingFollowups.length} overdue</span>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {pendingFollowups.slice(0, 8).map((f) => (
+                <li key={f.id}>
+                  <Link href={`/admin/patients/${f.id}`} className="flex items-center justify-between gap-3 px-5 py-2.5 transition hover:bg-amber-50/30">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{f.name}</p>
+                      <p className="truncate text-xs text-muted">{f.patientId} · Last: {f.lastVisitDate}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                      {f.daysOverdue}d overdue
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="font-semibold text-ink">Quick Actions</h2>
@@ -380,161 +473,21 @@ export default async function DashboardHome() {
             <ul className="divide-y divide-slate-100">
               {quickActions.map((q) => (
                 <li key={q.href}>
-                  <Link
-                    href={q.href}
-                    className="group flex items-center gap-3 px-5 py-3 transition hover:bg-slate-50"
-                  >
+                  <Link href={q.href} className="group flex items-center gap-3 px-5 py-3 transition hover:bg-slate-50">
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition group-hover:bg-brand-light group-hover:text-brand-dark">
                       <AdminIcon name={q.icon} className="h-5 w-5" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-ink">
-                        {q.label}
-                      </span>
-                      <span className="block text-xs text-muted">
-                        {q.description}
-                      </span>
+                      <span className="block text-sm font-medium text-ink">{q.label}</span>
+                      <span className="block text-xs text-muted">{q.description}</span>
                     </span>
-                    <AdminIcon
-                      name="chevronRight"
-                      className="h-4 w-4 text-slate-300 group-hover:text-brand"
-                    />
                   </Link>
                 </li>
               ))}
             </ul>
           </div>
-
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-ink">Content</p>
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <span className="text-muted">Published posts</span>
-              <span className="font-semibold text-ink">{publishedCount}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-muted">Draft posts</span>
-              <span className="font-semibold text-ink">
-                {posts.length - publishedCount}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Today's Appointments */}
-      <div className="mt-8 rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="font-semibold text-ink">Today&apos;s Appointments</h2>
-          <span className="text-sm text-muted">{todaysAppointments.length} total</span>
-        </div>
-        {todaysAppointments.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted">No appointments scheduled for today.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-muted">
-                <tr>
-                  <th className="px-5 py-2">Patient</th>
-                  <th className="px-5 py-2">Time</th>
-                  <th className="px-5 py-2">Chamber</th>
-                  <th className="px-5 py-2">Status</th>
-                  <th className="px-5 py-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {todaysAppointments.map((a) => (
-                  <tr key={a.id} className="hover:bg-slate-50/60">
-                    <td className="px-5 py-2.5">
-                      <p className="font-medium text-ink">{a.name}</p>
-                      <p className="text-xs text-muted">{a.phone}</p>
-                    </td>
-                    <td className="px-5 py-2.5 text-muted">{a.time}</td>
-                    <td className="px-5 py-2.5 text-muted">{a.location}</td>
-                    <td className="px-5 py-2.5">
-                      <Badge tone={STATUS_TONE[a.status] ?? "slate"}>{a.status}</Badge>
-                    </td>
-                    <td className="px-5 py-2.5 text-right">
-                      <Link href={`/admin/appointments`} className="rounded-lg bg-brand px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-dark">
-                        Start Visit
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
-
-      {/* Recent Patients */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="font-semibold text-ink">Recent Patients</h2>
-          <Link href="/admin/patients" className="text-sm font-medium text-brand hover:text-brand-dark">View all</Link>
-        </div>
-        {recentPatients.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted">No patients yet.</p>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {recentPatients.map((p) => (
-              <li key={p.id}>
-                <Link href={`/admin/patients/${p.id}`} className="flex items-center justify-between gap-4 px-5 py-3 transition hover:bg-slate-50">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink">{p.name}</p>
-                    <p className="truncate text-xs text-muted">{p.patientId} · {p.phone}</p>
-                  </div>
-                  <span className="shrink-0 text-xs text-muted">{new Date(p.updatedAt).toLocaleDateString()}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Pending Follow-ups */}
-      {pendingFollowups.length > 0 && (
-        <div className="mt-6 rounded-xl border border-amber-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-amber-100 px-5 py-4">
-            <h2 className="font-semibold text-ink">Pending Follow-ups</h2>
-            <span className="text-sm text-amber-600 font-medium">{pendingFollowups.length} overdue</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-amber-50/50 text-left text-xs font-semibold uppercase text-muted">
-                <tr>
-                  <th className="px-5 py-2">Patient</th>
-                  <th className="px-5 py-2">Last Visit</th>
-                  <th className="px-5 py-2">Follow-up</th>
-                  <th className="px-5 py-2">Overdue</th>
-                  <th className="px-5 py-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pendingFollowups.slice(0, 10).map((f) => (
-                  <tr key={f.id} className="hover:bg-amber-50/30">
-                    <td className="px-5 py-2.5">
-                      <p className="font-medium text-ink">{f.name}</p>
-                      <p className="text-xs text-muted">{f.patientId}</p>
-                    </td>
-                    <td className="px-5 py-2.5 text-muted">{f.lastVisitDate}</td>
-                    <td className="px-5 py-2.5 text-muted">{f.followUp}</td>
-                    <td className="px-5 py-2.5">
-                      <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                        {f.daysOverdue} day{f.daysOverdue !== 1 ? "s" : ""}
-                      </span>
-                    </td>
-                    <td className="px-5 py-2.5 text-right">
-                      <Link href={`/admin/patients/${f.id}`} className="text-xs font-medium text-brand hover:text-brand-dark">
-                        View →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

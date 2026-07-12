@@ -16,16 +16,36 @@ type NavItem = {
   roleOnly?: string; // only show for this role
 };
 
-const NAV: NavItem[] = [
-  { href: "/admin", label: "Dashboard", icon: "grid", exact: true },
-  { href: "/admin/settings", label: "Settings", icon: "settings", permission: "canManageSettings" },
-  { href: "/admin/medicines", label: "Medicines", icon: "fileText", permission: "canManageMedicines" },
-  { href: "/admin/posts", label: "Blog Posts", icon: "fileText", permission: "canManageBlog" },
-  { href: "/admin/appointments", label: "Appointments", icon: "calendar" },
-  { href: "/admin/patients", label: "Patient Records", icon: "users" },
-  { href: "/admin/reports", label: "Reports", icon: "grid", roleOnly: "DOCTOR" },
-  { href: "/admin/users", label: "Users", icon: "users", roleOnly: "DOCTOR" },
-  { href: "/admin/audit", label: "Audit Log", icon: "fileText", roleOnly: "DOCTOR" },
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "CLINIC",
+    items: [
+      { href: "/admin", label: "Dashboard", icon: "grid", exact: true },
+      { href: "/admin/appointments", label: "Appointments", icon: "calendar" },
+      { href: "/admin/patients", label: "Patient Records", icon: "users" },
+    ],
+  },
+  {
+    label: "CONTENT",
+    items: [
+      { href: "/admin/posts", label: "Blog Posts", icon: "fileText", permission: "canManageBlog" },
+      { href: "/admin/medicines", label: "Medicines", icon: "fileText", permission: "canManageMedicines" },
+    ],
+  },
+  {
+    label: "ADMIN",
+    items: [
+      { href: "/admin/settings", label: "Settings", icon: "settings", permission: "canManageSettings" },
+      { href: "/admin/reports", label: "Reports", icon: "grid", roleOnly: "DOCTOR" },
+      { href: "/admin/users", label: "Users", icon: "users", roleOnly: "DOCTOR" },
+      { href: "/admin/audit", label: "Audit Log", icon: "fileText", roleOnly: "DOCTOR" },
+    ],
+  },
 ];
 
 function pageTitle(pathname: string): string {
@@ -73,17 +93,23 @@ export default function AdminShell({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; phone: string; patientId: string }[]>([]);
   const [showSearch, setShowSearch] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const title = pageTitle(pathname);
   const initials = username.slice(0, 2).toUpperCase();
 
-  // Filter nav items based on permissions
-  const visibleNav = NAV.filter((item) => {
-    if (item.roleOnly && userRole !== item.roleOnly) return false;
-    if (item.permission && permissions && !permissions[item.permission]) return false;
-    return true;
-  });
+  // Filter nav groups based on permissions
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => {
+      if (item.roleOnly && userRole !== item.roleOnly) return false;
+      if (item.permission && permissions && !permissions[item.permission]) return false;
+      return true;
+    }),
+  })).filter((group) => group.items.length > 0);
 
   function toggleCollapse() {
     const next = !collapsed;
@@ -99,6 +125,21 @@ export default function AdminShell({
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Keyboard shortcut: Ctrl+K or / to focus search
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   function handleSearchChange(q: string) {
@@ -148,20 +189,29 @@ export default function AdminShell({
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-          {visibleNav.map((item) => {
-            const active = isActive(item.href, item.exact);
-            return (
-              <Link key={item.href} href={item.href}
-                onClick={() => setSideOpen(false)}
-                title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
-                  collapsed ? "lg:justify-center lg:px-0" : ""
-                } ${active ? "bg-brand text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
-                <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
-                <span className={`${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
-              </Link>
-            );
-          })}
+          {visibleGroups.map((group) => (
+            <div key={group.label}>
+              {!collapsed && (
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 px-3 pt-3 pb-1">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const active = isActive(item.href, item.exact);
+                return (
+                  <Link key={item.href} href={item.href}
+                    onClick={() => setSideOpen(false)}
+                    title={collapsed ? item.label : undefined}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
+                      collapsed ? "lg:justify-center lg:px-0" : ""
+                    } ${active ? "bg-brand text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
+                    <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+                    <span className={`${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Collapse toggle (desktop) */}
@@ -234,14 +284,31 @@ export default function AdminShell({
           <h1 className="text-base font-semibold text-ink sm:text-lg">{title}</h1>
           {/* Global patient search */}
           <div ref={searchRef} className="relative ml-4 hidden flex-1 max-w-xs sm:block">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              onFocus={() => { if (searchResults.length) setShowSearch(true); }}
-              placeholder="Search patients..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
-            />
+            <div className="relative">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() => { if (searchResults.length) setShowSearch(true); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && searchResults.length > 0) {
+                    e.preventDefault();
+                    router.push(`/admin/patients/${searchResults[0].id}`);
+                    setShowSearch(false);
+                    setSearchQuery("");
+                  } else if (e.key === "Escape") {
+                    setShowSearch(false);
+                    searchInputRef.current?.blur();
+                  }
+                }}
+                placeholder="Search patients..."
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 pr-16 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
+              />
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                {typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent) ? "⌘K" : "Ctrl+K"}
+              </span>
+            </div>
             {showSearch && searchResults.length > 0 && (
               <div className="absolute inset-x-0 top-full z-[100] mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
                 {searchResults.map((p) => (
@@ -261,14 +328,81 @@ export default function AdminShell({
                     </div>
                   </button>
                 ))}
+                <div className="border-t border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
+                  Press Enter to open first result
+                </div>
               </div>
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {/* Mobile search button */}
+            <button
+              type="button"
+              onClick={() => { setMobileSearchOpen(true); setTimeout(() => mobileSearchInputRef.current?.focus(), 100); }}
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 active:bg-slate-100 sm:hidden"
+              aria-label="Search"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="m21 21-4.35-4.35" /></svg>
+            </button>
             <Link href="/" target="_blank" className="hidden items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-muted hover:border-brand hover:text-brand sm:inline-flex">
               <AdminIcon name="external" className="h-3.5 w-3.5" /> Site
             </Link>
           </div>
+
+          {/* Mobile search overlay */}
+          {mobileSearchOpen && (
+            <div className="absolute inset-x-0 top-0 z-[60] flex h-14 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:hidden">
+              <input
+                ref={mobileSearchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && searchResults.length > 0) {
+                    e.preventDefault();
+                    router.push(`/admin/patients/${searchResults[0].id}`);
+                    setShowSearch(false);
+                    setSearchQuery("");
+                    setMobileSearchOpen(false);
+                  } else if (e.key === "Escape") {
+                    setMobileSearchOpen(false);
+                    setShowSearch(false);
+                  }
+                }}
+                placeholder="Search patients..."
+                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
+              />
+              <button type="button" onClick={() => { setMobileSearchOpen(false); setShowSearch(false); }}
+                className="rounded-lg px-2 py-1.5 text-sm font-medium text-muted hover:text-ink">
+                Cancel
+              </button>
+              {showSearch && searchResults.length > 0 && (
+                <div className="absolute inset-x-3 top-full z-[100] mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+                  {searchResults.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        router.push(`/admin/patients/${p.id}`);
+                        setShowSearch(false);
+                        setSearchQuery("");
+                        setMobileSearchOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink">{p.name}</p>
+                        <p className="truncate text-xs text-muted">{p.patientId} · {p.phone}</p>
+                      </div>
+                    </button>
+                  ))}
+                  <div className="border-t border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
+                    Press Enter to open first result
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
         {/* Content */}

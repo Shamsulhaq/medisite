@@ -7,9 +7,10 @@ import type { MedicineRef } from "@/lib/medicines";
 import { FREQUENCIES, DURATIONS, FORMS, shortForm } from "@/lib/medicines";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
 import InvestigationAutocomplete from "@/components/admin/InvestigationAutocomplete";
-import { printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
+import { generateConsultationHtml, printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
 import { useToast } from "@/components/admin/ToastProvider";
 import { clearPendingVitalsAction } from "@/app/admin/patient-actions";
+import ButtonSpinner from "@/components/admin/ButtonSpinner";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
@@ -32,13 +33,13 @@ function AttachmentField({ value, onChange }: { value: string; onChange: (url: s
       <input ref={ref} type="file" accept="image/*,application/pdf" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
       <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
-        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium transition hover:bg-slate-50 disabled:opacity-60">
+        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed">
         {uploading ? "Uploading…" : "Attach"}
       </button>
       {value && (
         <span className="flex items-center gap-2 text-xs text-muted">
           <a href={value} target="_blank" rel="noreferrer" className="text-brand underline">View</a>
-          <button type="button" onClick={() => onChange("")} className="text-red-600 hover:underline">remove</button>
+          <button type="button" onClick={() => onChange("")} className="text-red-600 font-medium hover:underline">remove</button>
         </span>
       )}
     </div>
@@ -231,11 +232,13 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
     }
   }
 
+  const expanded = entry.name.trim().length > 0;
+
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-muted">{index + 1}.</span>
-        <button type="button" onClick={onRemove} className="text-xs text-red-600 hover:underline">Remove</button>
+        <button type="button" onClick={onRemove} className="text-xs text-red-600 font-medium hover:underline">Remove</button>
       </div>
       <div className="grid gap-2 sm:grid-cols-[1fr_120px_120px]">
         <div className="relative">
@@ -248,7 +251,7 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
             autoComplete="off"
             className={inputClass} />
           {showSugg && flatItems.length > 0 && (
-            <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+            <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-56 max-w-full overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
               {flatItems.map((item, i) => (
                 <button key={`${item.name}-${i}`} type="button"
                   onClick={() => pick(item.med, item.name, item.type)}
@@ -280,7 +283,12 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
             className={inputClass} placeholder="Dosage" />
         )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      {/* Progressive disclosure: frequency, timing, duration, special note */}
+      <div
+        className={`grid gap-2 sm:grid-cols-3 overflow-hidden transition-all duration-300 ease-in-out ${
+          expanded ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <select value={entry.frequency} onChange={(e) => onChange({ ...entry, frequency: e.target.value })} className={inputClass}>
           <option value="">Frequency</option>
           {FREQUENCIES.map((f) => <option key={f}>{f}</option>)}
@@ -292,8 +300,14 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
           {DURATIONS.map((d) => <option key={d}>{d}</option>)}
         </select>
       </div>
-      <input value={entry.specialNote} onChange={(e) => onChange({ ...entry, specialNote: e.target.value })}
-        className={inputClass} placeholder="Special note (optional)" />
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          expanded ? "max-h-20 opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <input value={entry.specialNote} onChange={(e) => onChange({ ...entry, specialNote: e.target.value })}
+          className={inputClass} placeholder="Special note (optional)" />
+      </div>
     </div>
   );
 }
@@ -310,6 +324,9 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
 }) {
   const { toast } = useToast();
   const [customAdviceInput, setCustomAdviceInput] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
   const todayDate = today();
   const patientAppointment = appointments.find(
     (a) =>
@@ -378,6 +395,7 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
     return base;
   });
   const hasPendingVitals = !!(patient.pendingVitals && (patient.pendingVitals.bp || patient.pendingVitals.weight));
+  const [printing, setPrinting] = useState(false);
 
   const computedFee = (() => {
     if (!feeStructure) return 0;
@@ -450,8 +468,27 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
           await clearPendingVitalsAction(patient.id);
         } catch {}
       }
+      // Visual success feedback
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 1500);
       toast("success", "Consultation saved successfully");
     });
+  }
+
+  function handlePreview() {
+    const consultationData: Consultation = {
+      id: "preview",
+      ...c,
+      chiefComplaint: c.chiefComplaint.filter(Boolean),
+      diagnosis: c.diagnosis.filter(Boolean),
+      advices: c.advices.filter(Boolean),
+    };
+    const chamberInfo = c.chamberId
+      ? (() => { const ch = chambers.find((x) => x.id === c.chamberId); return ch ? { name: ch.name, address: ch.address, phone: ch.phone } : undefined; })()
+      : undefined;
+    const html = generateConsultationHtml(patient, consultationData, doctor, prescriptionConfig, chamberInfo);
+    setPreviewHtml(html);
+    setShowPreviewModal(true);
   }
 
   // Keyboard shortcuts
@@ -466,10 +503,12 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
         e.preventDefault();
         const lastConsultation = patient.consultations[0];
         if (lastConsultation) {
+          setPrinting(true);
           const chamberInfo = lastConsultation.chamberId
             ? (() => { const ch = chambers.find((x) => x.id === lastConsultation.chamberId); return ch ? { name: ch.name, address: ch.address, phone: ch.phone } : undefined; })()
             : undefined;
           printConsultation(patient, lastConsultation, doctor, prescriptionConfig, chamberInfo);
+          setTimeout(() => setPrinting(false), 1000);
         }
       } else if (e.key === "m") {
         e.preventDefault();
@@ -625,7 +664,7 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
                 />
               ))}
               <button type="button" onClick={() => setC({ ...c, medicines: [...c.medicines, { ...emptyMed }] })}
-                className="w-full rounded-lg border border-dashed border-slate-300 py-2 text-sm font-medium text-brand hover:border-brand hover:bg-brand-light/20">
+                className="w-full rounded-lg border border-dashed border-slate-300 py-2 text-sm font-medium text-brand hover:border-brand hover:bg-brand-light/20 min-h-[44px]">
                 + Add medicine
               </button>
             </div>
@@ -713,42 +752,62 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
-          <button type="button" disabled={pending || c.medicines.length === 0}
-            onClick={handleSave}
-            className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50">
-            Save Consultation
-          </button>
+        {/* Sticky save bar */}
+        <div className="sticky bottom-0 inset-x-0 z-40 -mx-6 -mb-6 border-t border-slate-200 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
+            <button type="button" disabled={pending || c.medicines.length === 0}
+              onClick={handleSave}
+              className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed ${
+                saveSuccess ? "bg-green-600 hover:bg-green-700" : "bg-brand hover:bg-brand-dark"
+              }`}>
+              {saveSuccess ? (
+                <>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  Saved!
+                </>
+              ) : (
+                <>
+                  {pending && <ButtonSpinner />}
+                  {pending ? "Saving…" : "Save Consultation"}
+                </>
+              )}
+            </button>
 
-          {feeStructure && (
-            <div className="inline-flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-muted">Fee:</label>
-                <input type="number" value={payment.fee} onChange={(e) => setPayment({ ...payment, fee: Number(e.target.value) })}
-                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
+            <button type="button" onClick={handlePreview} disabled={c.medicines.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-slate-50 disabled:opacity-50 min-h-[44px]">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              Preview
+            </button>
+
+            {feeStructure && (
+              <div className="hidden sm:inline-flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted">Fee:</label>
+                  <input type="number" value={payment.fee} onChange={(e) => setPayment({ ...payment, fee: Number(e.target.value) })}
+                    className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted">Received:</label>
+                  <input type="number" value={payment.received} onChange={(e) => setPayment({ ...payment, received: Number(e.target.value) })}
+                    className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted">Discount:</label>
+                  <input type="number" value={payment.discount} onChange={(e) => setPayment({ ...payment, discount: Number(e.target.value) })}
+                    className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
+                </div>
+                <select value={payment.status} onChange={(e) => setPayment({ ...payment, status: e.target.value as "paid" | "unpaid" | "partial" })}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs min-h-[44px] lg:min-h-0">
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                  <option value="partial">Partial</option>
+                </select>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-muted">Received:</label>
-                <input type="number" value={payment.received} onChange={(e) => setPayment({ ...payment, received: Number(e.target.value) })}
-                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-muted">Discount:</label>
-                <input type="number" value={payment.discount} onChange={(e) => setPayment({ ...payment, discount: Number(e.target.value) })}
-                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
-              </div>
-              <select value={payment.status} onChange={(e) => setPayment({ ...payment, status: e.target.value as "paid" | "unpaid" | "partial" })}
-                className="rounded border border-slate-300 px-2 py-1 text-xs">
-                <option value="paid">Paid</option>
-                <option value="unpaid">Unpaid</option>
-                <option value="partial">Partial</option>
-              </select>
-            </div>
-          )}
+            )}
+
+            <p className="hidden sm:block text-xs text-muted ml-auto">⌘/Ctrl+S Save | ⌘/Ctrl+P Print | ⌘/Ctrl+M Add medicine</p>
+          </div>
         </div>
-
-        {/* Keyboard shortcuts hint */}
-        <p className="text-xs text-muted">⌘/Ctrl+S Save | ⌘/Ctrl+P Print | ⌘/Ctrl+M Add medicine</p>
       </div>
 
       {/* Timing datalist */}
@@ -757,6 +816,46 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
           <option key={t} value={t} />
         ))}
       </datalist>
+
+      {/* Prescription Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-0 lg:p-6" onClick={() => setShowPreviewModal(false)}>
+          <div className="relative flex h-full w-full flex-col overflow-hidden bg-white lg:h-[90vh] lg:max-h-[900px] lg:w-full lg:max-w-4xl lg:rounded-xl lg:shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Modal header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 lg:px-6">
+              <h3 className="text-base font-semibold text-ink">Prescription Preview</h3>
+              <div className="flex items-center gap-2">
+                <button type="button"
+                  onClick={() => {
+                    const iframe = document.getElementById("preview-iframe") as HTMLIFrameElement;
+                    if (iframe?.contentWindow) {
+                      iframe.contentWindow.focus();
+                      iframe.contentWindow.print();
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark min-h-[44px]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                  Print
+                </button>
+                <button type="button" onClick={() => setShowPreviewModal(false)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-ink transition hover:bg-slate-50 min-h-[44px]">
+                  Close
+                </button>
+              </div>
+            </div>
+            {/* Modal body: iframe with prescription HTML */}
+            <div className="flex-1 overflow-auto bg-slate-100 p-2 lg:p-4">
+              <iframe
+                id="preview-iframe"
+                srcDoc={previewHtml}
+                className="h-full w-full rounded border border-slate-200 bg-white"
+                title="Prescription Preview"
+                style={{ minHeight: "600px" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

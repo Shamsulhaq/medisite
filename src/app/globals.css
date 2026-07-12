@@ -59,3 +59,10 @@ body {
   margin-bottom: 1.1rem;
   line-height: 1.8;
 }
+
+/* Sticky save bar: full width on tablet/mobile */
+@media (max-width: 1024px) {
+  .sticky-save {
+    left: 0 !important;
+  }
+}

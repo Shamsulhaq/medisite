@@ -11,7 +11,7 @@ import ConsultationTimeline from "@/components/admin/ConsultationTimeline";
 import ConsultationForm from "@/components/admin/ConsultationForm";
 import TestReportsSection from "@/components/admin/TestReportsSection";
 
-export default function PatientRecords({ patient, doctor, prescriptionConfig, prescriptionTemplates, chambers, appointments, feeStructure, permissions }: {
+export default function PatientRecords({ patient, doctor, prescriptionConfig, prescriptionTemplates, chambers, appointments, feeStructure, permissions, testReportsOnly }: {
   patient: Patient;
   doctor: DoctorInfo;
   prescriptionConfig: PrescriptionConfig;
@@ -20,6 +20,7 @@ export default function PatientRecords({ patient, doctor, prescriptionConfig, pr
   appointments: Appointment[];
   feeStructure?: { firstVisit: number; within7Days: number; within30Days: number; after30Days: number };
   permissions?: { canWriteRx?: boolean; canAddTestReport?: boolean; canEditConsultation?: boolean; canPrintPrescription?: boolean; canAddVitals?: boolean; canCollectFee?: boolean };
+  testReportsOnly?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -97,6 +98,21 @@ export default function PatientRecords({ patient, doctor, prescriptionConfig, pr
   const canTest = permissions?.canAddTestReport !== false;
   const canEdit = permissions?.canEditConsultation !== false;
 
+  if (testReportsOnly) {
+    return (
+      <div className={`space-y-6 ${pending ? "opacity-70" : ""}`}>
+        {canTest && (
+          <TestReportsSection
+            patient={patient}
+            pending={pending}
+            onAdd={(data, reset) => add("testReports", data, reset)}
+            onDelete={(id) => remove("testReports", id)}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={`space-y-6 ${pending ? "opacity-70" : ""}`}>
       <ConsultationTimeline
@@ -157,7 +173,7 @@ export default function PatientRecords({ patient, doctor, prescriptionConfig, pr
                     : undefined;
                   printConsultation(patient, latestConsultation, doctor, prescriptionConfig, chamberInfo);
                 }}
-                className="w-full rounded-lg bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                className="w-full rounded-lg bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 🖨️ Print Latest Prescription
               </button>
