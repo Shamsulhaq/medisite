@@ -44,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/reports", label: "Reports", icon: "grid", roleOnly: "DOCTOR" },
       { href: "/admin/users", label: "Users", icon: "users", roleOnly: "DOCTOR" },
       { href: "/admin/audit", label: "Audit Log", icon: "fileText", roleOnly: "DOCTOR" },
+      { href: "/admin/backup", label: "Backup", icon: "grid", roleOnly: "DOCTOR" },
     ],
   },
 ];
@@ -64,6 +65,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/admin/reports")) return "Reports";
   if (pathname.startsWith("/admin/users")) return "Users";
   if (pathname.startsWith("/admin/audit")) return "Audit Log";
+  if (pathname.startsWith("/admin/backup")) return "Backup & Restore";
   return "Admin";
 }
 
