@@ -16,8 +16,6 @@ export default {
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      // authorize is only called server-side (Node.js), never in middleware.
-      // It's defined in src/auth.ts where Node.js APIs are available.
     }),
   ],
 
@@ -34,12 +32,20 @@ export default {
     async jwt({ token, user }) {
       if (user) {
         token.username = user.name;
+        token.userId = user.id;
+        token.role = user.email; // role piggybacked on email field
       }
       return token;
     },
     async session({ session, token }) {
       if (token.username) {
         session.user.name = token.username as string;
+      }
+      if (token.userId) {
+        session.user.id = token.userId as string;
+      }
+      if (token.role) {
+        session.user.email = token.role as string; // role accessible as session.user.email
       }
       return session;
     },
@@ -52,7 +58,6 @@ export default {
         return Response.redirect(new URL("/admin/login", nextUrl));
       }
 
-      // If logged in and on login page, redirect to dashboard.
       if (isLoginPage && isLoggedIn) {
         return Response.redirect(new URL("/admin", nextUrl));
       }

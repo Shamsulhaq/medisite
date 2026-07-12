@@ -4,12 +4,14 @@ import { useState } from "react";
 import type { SiteSettings, PrescriptionConfig, PrescriptionTemplate } from "@/lib/types";
 import { saveSettingsAction } from "@/app/admin/actions";
 import { Section, TextField, AddButton } from "@/components/admin/fields";
+import InvestigationList from "@/components/admin/InvestigationList";
 
 const TABS = [
   { id: "header", label: "Header" },
   { id: "footer", label: "Footer" },
   { id: "advices", label: "Advices" },
   { id: "diagnoses", label: "Diagnoses" },
+  { id: "investigations", label: "Investigations" },
   { id: "timing", label: "Timing" },
   { id: "followup", label: "Follow-up" },
   { id: "templates", label: "Templates" },
@@ -146,6 +148,15 @@ export default function PrescriptionConfigForm({
               </div>
             ))}
             <AddButton label="Add diagnosis" onClick={() => addToList("predefinedDiagnoses")} />
+          </Section>
+        </div>
+      )}
+
+      {/* INVESTIGATIONS */}
+      {tab === "investigations" && (
+        <div className="space-y-6">
+          <Section title="Investigations" description="Common tests/investigations available for autocomplete when writing prescriptions. New ones added during consultations are auto-saved here.">
+            <InvestigationList />
           </Section>
         </div>
       )}

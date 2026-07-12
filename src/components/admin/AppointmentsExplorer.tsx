@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Appointment } from "@/lib/types";
+import type { Appointment, Availability } from "@/lib/types";
 import { downloadCSV, downloadExcel, openPrintPDF } from "@/lib/export";
 import AppointmentsManager from "@/components/admin/AppointmentsManager";
 
@@ -20,19 +20,33 @@ const control =
 export default function AppointmentsExplorer({
   appointments,
   chambers,
+  availability,
+  userId,
+  userName,
+  isDoctor,
 }: {
   appointments: Appointment[];
   chambers: string[];
+  availability?: Availability;
+  userId?: string;
+  userName?: string;
+  isDoctor?: boolean;
 }) {
   const [range, setRange] = useState<RangeMode>("upcoming");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [type, setType] = useState<"all" | "online" | "offline">("all");
   const [chamber, setChamber] = useState<string>("all");
+  const [search, setSearch] = useState("");
 
   const today = todayStr();
 
   const filtered = useMemo(() => {
+    const bySearch = (a: Appointment) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return a.name.toLowerCase().includes(q) || a.phone.includes(q);
+    };
     const byRange = (a: Appointment) => {
       switch (range) {
         case "today":
@@ -53,12 +67,12 @@ export default function AppointmentsExplorer({
       chamber === "all" || (a.mode === "offline" && a.location === chamber);
 
     return appointments
-      .filter((a) => byRange(a) && byType(a) && byChamber(a))
+      .filter((a) => bySearch(a) && byRange(a) && byType(a) && byChamber(a))
       .sort((a, b) => {
         if (a.date !== b.date) return a.date < b.date ? -1 : 1;
         return a.time < b.time ? -1 : 1;
       });
-  }, [appointments, range, from, to, type, chamber, today]);
+  }, [appointments, range, from, to, type, chamber, search, today]);
 
   const EXPORT_HEADERS = [
     "Name",
@@ -94,6 +108,12 @@ export default function AppointmentsExplorer({
       {/* Filter + export bar */}
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
+          <label className="flex min-w-[180px] flex-1 flex-col gap-1">
+            <span className="text-xs font-medium text-muted">Search</span>
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Name or phone..."
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20" />
+          </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Period</span>
             <select
@@ -212,7 +232,7 @@ export default function AppointmentsExplorer({
         </div>
       </div>
 
-      <AppointmentsManager appointments={filtered} />
+      <AppointmentsManager appointments={filtered} availability={availability} userId={userId} userName={userName} isDoctor={isDoctor} />
     </div>
   );
 }

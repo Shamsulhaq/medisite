@@ -6,6 +6,7 @@ import {
   updateUsername,
   updatePassword,
   getUser,
+  getUserByUsername,
   verifyPassword,
 } from "@/lib/auth";
 import { auth, signIn, signOut } from "@/auth";
@@ -14,6 +15,8 @@ import {
   createPost,
   updatePost,
   deletePost,
+  getRevisions,
+  getRevision,
   type PostInput,
 } from "@/lib/store";
 import {
@@ -21,6 +24,9 @@ import {
   deleteAppointment,
 } from "@/lib/appointments";
 import type { SiteSettings, AppointmentStatus } from "@/lib/types";
+import { requirePermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
+import { getCurrentUser } from "@/lib/rbac";
 
 async function requireSession() {
   const session = await auth();
@@ -31,7 +37,6 @@ async function requireSession() {
 }
 
 function revalidatePublic() {
-  // Refresh public pages so edits appear immediately.
   revalidatePath("/", "layout");
 }
 
@@ -56,8 +61,13 @@ export async function loginAction(
       password,
       redirectTo: "/admin",
     });
+
+    // Log audit after successful login
+    const user = await getUserByUsername(username);
+    if (user) {
+      await logAudit(user.id, "LOGIN", "session", undefined, { username });
+    }
   } catch (err: unknown) {
-    // signIn throws a NEXT_REDIRECT on success — re-throw it.
     if (
       err &&
       typeof err === "object" &&
@@ -65,16 +75,24 @@ export async function loginAction(
       typeof (err as { digest: unknown }).digest === "string" &&
       (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
     ) {
+      // Log audit for successful login (signIn redirects before we can log above)
+      const user = await getUserByUsername(username);
+      if (user) {
+        await logAudit(user.id, "LOGIN", "session", undefined, { username });
+      }
       throw err;
     }
     return { error: "Invalid username or password." };
   }
 
-  // Should not reach here (redirect happens above), but just in case:
   redirect("/admin");
 }
 
 export async function logoutAction() {
+  const current = await getCurrentUser();
+  if (current) {
+    await logAudit(current.id, "LOGOUT", "session");
+  }
   await signOut({ redirectTo: "/admin/login" });
 }
 
@@ -93,7 +111,6 @@ export async function updateAccountAction(
 
   const user = await getUser();
 
-  // Verify current password before allowing any account change.
   if (!verifyPassword(currentPassword, user.salt, user.hash)) {
     return { error: "Your current password is incorrect." };
   }
@@ -127,13 +144,20 @@ export async function saveSettingsAction(
   settings: SiteSettings
 ): Promise<{ ok: boolean; error?: string }> {
   await requireSession();
+  await requirePermission("canManageSettings");
+
   try {
-    // Basic normalization / guard rails.
     if (!settings || typeof settings !== "object") {
       return { ok: false, error: "Invalid settings payload." };
     }
     await saveSettings(settings);
     revalidatePublic();
+
+    const current = await getCurrentUser();
+    if (current) {
+      await logAudit(current.id, "UPDATE_SETTINGS", "settings", "main");
+    }
+
     return { ok: true };
   } catch (err) {
     console.error("saveSettings failed:", err);
@@ -148,6 +172,8 @@ export async function savePostAction(
   id?: string
 ): Promise<{ ok: boolean; id?: string; slug?: string; error?: string }> {
   await requireSession();
+  await requirePermission("canManageBlog");
+
   try {
     if (!input.title?.en?.trim() && !input.title?.bn?.trim()) {
       return { ok: false, error: "Title is required." };
@@ -155,6 +181,18 @@ export async function savePostAction(
     const post = id ? await updatePost(id, input) : await createPost(input);
     if (!post) return { ok: false, error: "Post not found." };
     revalidatePublic();
+
+    const current = await getCurrentUser();
+    if (current) {
+      await logAudit(
+        current.id,
+        id ? "UPDATE_POST" : "CREATE_POST",
+        "blogPost",
+        post.id,
+        { title: post.title, slug: post.slug }
+      );
+    }
+
     return { ok: true, id: post.id, slug: post.slug };
   } catch (err) {
     console.error("savePost failed:", err);
@@ -166,8 +204,18 @@ export async function deletePostAction(
   id: string
 ): Promise<{ ok: boolean }> {
   await requireSession();
+  await requirePermission("canManageBlog");
+
   const ok = await deletePost(id);
   revalidatePublic();
+
+  if (ok) {
+    const current = await getCurrentUser();
+    if (current) {
+      await logAudit(current.id, "DELETE_POST", "blogPost", id);
+    }
+  }
+
   return { ok };
 }
 
@@ -178,8 +226,18 @@ export async function setAppointmentStatusAction(
   status: AppointmentStatus
 ): Promise<{ ok: boolean }> {
   await requireSession();
+  await requirePermission("canConfirmAppointment");
+
   const ok = await updateAppointmentStatus(id, status);
   revalidatePath("/admin/appointments");
+
+  if (ok) {
+    const current = await getCurrentUser();
+    if (current) {
+      await logAudit(current.id, "UPDATE_APPOINTMENT", "appointment", id, { status });
+    }
+  }
+
   return { ok };
 }
 
@@ -187,7 +245,34 @@ export async function deleteAppointmentAction(
   id: string
 ): Promise<{ ok: boolean }> {
   await requireSession();
+  await requirePermission("canConfirmAppointment");
+
   const ok = await deleteAppointment(id);
   revalidatePath("/admin/appointments");
+
+  if (ok) {
+    const current = await getCurrentUser();
+    if (current) {
+      await logAudit(current.id, "DELETE_APPOINTMENT", "appointment", id);
+    }
+  }
+
   return { ok };
+}
+
+// ---- Blog Revisions --------------------------------------------------------
+
+export async function getRevisionsAction(
+  postId: string
+): Promise<{ id: string; createdAt: string; data: unknown }[]> {
+  await requireSession();
+  return getRevisions(postId);
+}
+
+export async function getRevisionAction(
+  revisionId: string
+): Promise<{ id: string; postId: string; data: unknown; createdAt: string } | null> {
+  await requireSession();
+  const rev = await getRevision(revisionId);
+  return rev ?? null;
 }

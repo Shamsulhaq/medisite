@@ -327,6 +327,10 @@ export const defaultSettings: SiteSettings = {
     ],
   },
   prescriptionTemplates: [],
+  blog: {
+    categories: ["Patient Education", "Health Tips", "Clinical Notes", "Research", "Preventive Health", "News"],
+    defaultDisclaimer: "This content is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always seek the advice of your physician or other qualified health provider.",
+  },
 };
 
 export const defaultPosts: BlogPost[] = [
@@ -344,6 +348,16 @@ export const defaultPosts: BlogPost[] = [
     coverImage: "",
     published: true,
     updatedAt: "2026-06-12T08:00:00.000Z",
+    category: "Clinical Notes",
+    metaTitle: "",
+    metaDescription: "",
+    ogImage: "",
+    reviewedBy: "",
+    reviewedDate: "",
+    references: "",
+    disclaimer: "",
+    scheduledDate: "",
+    viewCount: 0,
     body: ls(
       `A day in the medicine ward begins long before the sun is fully up. As an Assistant Registrar at Faridpur Medical College Hospital, my morning starts with reviewing overnight events, checking on critically ill patients, and preparing for the day's rounds.
 
@@ -388,6 +402,16 @@ By evening, the pace rarely slows. New admissions arrive, and the cycle continue
     coverImage: "",
     published: true,
     updatedAt: "2026-05-20T08:00:00.000Z",
+    category: "Patient Education",
+    metaTitle: "",
+    metaDescription: "",
+    ogImage: "",
+    reviewedBy: "",
+    reviewedDate: "",
+    references: "",
+    disclaimer: "",
+    scheduledDate: "",
+    viewCount: 0,
     body: ls(
       `Hypertension, or high blood pressure, is one of the most common conditions I see. It often has no symptoms, which is why it is sometimes called the **silent killer**.
 
@@ -436,6 +460,16 @@ If you have been diagnosed with hypertension, please do not stop your medication
     coverImage: "",
     published: true,
     updatedAt: "2026-04-08T08:00:00.000Z",
+    category: "Clinical Notes",
+    metaTitle: "",
+    metaDescription: "",
+    ogImage: "",
+    reviewedBy: "",
+    reviewedDate: "",
+    references: "",
+    disclaimer: "",
+    scheduledDate: "",
+    viewCount: 0,
     body: ls(
       `One of the most rewarding parts of my role is working with interns and junior doctors. They bring energy and fresh questions that keep all of us sharp.
 

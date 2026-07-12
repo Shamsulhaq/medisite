@@ -9,7 +9,7 @@ import type { DoctorInfo } from "@/lib/prescription-pdf";
 
 function TimelineItem({ consultation: con, patient, doctor, prescriptionConfig, chambers, onDelete, onEdit }: {
   consultation: Consultation; patient: Patient; doctor: DoctorInfo;
-  prescriptionConfig: PrescriptionConfig; chambers: Chamber[]; onDelete: () => void; onEdit: () => void;
+  prescriptionConfig: PrescriptionConfig; chambers: Chamber[]; onDelete?: () => void; onEdit?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -71,8 +71,8 @@ function TimelineItem({ consultation: con, patient, doctor, prescriptionConfig, 
           {con.notes && <p className="text-xs text-muted"><span className="font-medium text-ink">Notes:</span> {con.notes}</p>}
           <div className="flex items-center gap-3 pt-2 border-t border-slate-200">
             <PrescriptionActions patient={patient} consultation={con} doctor={doctor} rxConfig={prescriptionConfig} chambers={chambers} />
-            <button type="button" onClick={onEdit} className="rounded bg-slate-200 px-2.5 py-1 text-xs font-medium text-ink hover:bg-slate-300">Edit</button>
-            <button type="button" onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline ml-auto">Delete</button>
+            {onEdit && <button type="button" onClick={onEdit} className="rounded bg-slate-200 px-2.5 py-1 text-xs font-medium text-ink hover:bg-slate-300">Edit</button>}
+            {onDelete && <button type="button" onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline ml-auto">Delete</button>}
           </div>
         </div>
       )}
@@ -85,8 +85,8 @@ export default function ConsultationTimeline({ patient, doctor, prescriptionConf
   doctor: DoctorInfo;
   prescriptionConfig: PrescriptionConfig;
   chambers: Chamber[];
-  onDelete: (id: string) => void;
-  onEdit: (consultation: Consultation) => void;
+  onDelete?: (id: string) => void;
+  onEdit?: (consultation: Consultation) => void;
 }) {
   // Filter out superseded (edited) consultations — only show the latest version
   const visibleConsultations = patient.consultations.filter((c) => !c.superseded);
@@ -102,7 +102,7 @@ export default function ConsultationTimeline({ patient, doctor, prescriptionConf
         {visibleConsultations.length > 0 && (
           <div className="relative ml-4 border-l-2 border-slate-200 pl-6">
             {visibleConsultations.map((con) => (
-              <TimelineItem key={con.id} consultation={con} patient={patient} doctor={doctor} prescriptionConfig={prescriptionConfig} chambers={chambers} onDelete={() => onDelete(con.id)} onEdit={() => onEdit(con)} />
+              <TimelineItem key={con.id} consultation={con} patient={patient} doctor={doctor} prescriptionConfig={prescriptionConfig} chambers={chambers} onDelete={onDelete ? () => onDelete(con.id) : undefined} onEdit={onEdit ? () => onEdit(con) : undefined} />
             ))}
           </div>
         )}

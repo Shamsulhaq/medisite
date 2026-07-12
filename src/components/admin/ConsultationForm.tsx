@@ -6,7 +6,10 @@ import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } f
 import type { MedicineRef } from "@/lib/medicines";
 import { FREQUENCIES, DURATIONS, FORMS, shortForm } from "@/lib/medicines";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
+import InvestigationAutocomplete from "@/components/admin/InvestigationAutocomplete";
 import { printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
+import { useToast } from "@/components/admin/ToastProvider";
+import { clearPendingVitalsAction } from "@/app/admin/patient-actions";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
@@ -49,41 +52,182 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
   const [query, setQuery] = useState(entry.name);
   const [suggestions, setSuggestions] = useState<MedicineRef[]>([]);
   const [showSugg, setShowSugg] = useState(false);
+  const [highlighted, setHighlighted] = useState(-1);
   const [availDosages, setAvailDosages] = useState<string[]>([]);
   const [availForms, setAvailForms] = useState<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const userTypingRef = useRef(true);
+  const deletingRef = useRef(false);
+  const inlineSuggestionRef = useRef<{ name: string; med: MedicineRef; type: "generic" | "brand" } | null>(null);
+
+  // Flatten suggestions: generics + their top brands
+  const flatItems: { med: MedicineRef; name: string; type: "generic" | "brand" }[] = [];
+  const ql = query.toLowerCase();
+  // Collect all matching brands across all suggestions
+  const allMatchingBrands: { med: MedicineRef; name: string }[] = [];
+  const allGenerics: { med: MedicineRef; name: string }[] = [];
+  for (const s of suggestions) {
+    allGenerics.push({ med: s, name: s.generic });
+    for (const b of s.brands) {
+      if (b.toLowerCase().startsWith(ql)) {
+        allMatchingBrands.push({ med: s, name: b });
+      }
+    }
+  }
+  // Sort matching brands: exact match first, then shorter names first (most relevant)
+  allMatchingBrands.sort((a, b) => {
+    const aExact = a.name.toLowerCase() === ql ? 0 : 1;
+    const bExact = b.name.toLowerCase() === ql ? 0 : 1;
+    if (aExact !== bExact) return aExact - bExact;
+    return a.name.length - b.name.length;
+  });
+  // Build flat list: matching brands first, then generics with their other brands
+  for (const item of allMatchingBrands.slice(0, 8)) {
+    flatItems.push({ med: item.med, name: item.name, type: "brand" });
+  }
+  for (const g of allGenerics) {
+    flatItems.push({ med: g.med, name: g.name, type: "generic" });
+    // Add a few non-matching brands for context
+    const others = g.med.brands.filter((b) => !b.toLowerCase().startsWith(ql)).slice(0, 2);
+    for (const b of others) {
+      flatItems.push({ med: g.med, name: b, type: "brand" });
+    }
+    if (flatItems.length > 25) break;
+  }
+
+  // Find the best inline suggestion (first brand that starts with query)
+  function getInlineSuggestion(q: string): { med: MedicineRef; name: string; type: "generic" | "brand" } | null {
+    if (!q) return null;
+    const ql = q.toLowerCase();
+    for (const item of flatItems) {
+      if (item.name.toLowerCase().startsWith(ql)) return item;
+    }
+    return null;
+  }
 
   function handleSearch(v: string) {
-    setQuery(v); onChange({ ...entry, name: v });
+    userTypingRef.current = true;
+    inlineSuggestionRef.current = null;
+    setQuery(v);
+    onChange({ ...entry, name: v });
     if (timerRef.current) clearTimeout(timerRef.current);
     if (v.length < 1) { setSuggestions([]); setShowSugg(false); return; }
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/admin/medicines?q=${encodeURIComponent(v)}`);
-        const data = await res.json();
+        const data: MedicineRef[] = await res.json();
         setSuggestions(Array.isArray(data) ? data : []);
         setShowSugg(data.length > 0);
+
+        // Inline autofill: find best match and set selection range
+        if (data.length > 0 && inputRef.current && userTypingRef.current && !deletingRef.current) {
+          const ql = v.toLowerCase();
+          // Collect ALL matching brands across all results, sort by best match
+          const candidates: { name: string; med: MedicineRef; type: "brand" | "generic" }[] = [];
+          for (const m of data) {
+            for (const b of m.brands) {
+              if (b.toLowerCase().startsWith(ql)) candidates.push({ name: b, med: m, type: "brand" });
+            }
+            if (m.generic.toLowerCase().startsWith(ql)) candidates.push({ name: m.generic, med: m, type: "generic" });
+          }
+          // Sort: exact match first, then shortest name (most specific)
+          candidates.sort((a, b) => {
+            const aExact = a.name.toLowerCase() === ql ? 0 : 1;
+            const bExact = b.name.toLowerCase() === ql ? 0 : 1;
+            if (aExact !== bExact) return aExact - bExact;
+            return a.name.length - b.name.length;
+          });
+          const best = candidates[0];
+          if (best && best.name.toLowerCase() !== ql) {
+            const newVal = v + best.name.slice(v.length);
+            setQuery(newVal);
+            inlineSuggestionRef.current = { name: best.name, med: best.med, type: best.type };
+            requestAnimationFrame(() => {
+              inputRef.current?.setSelectionRange(v.length, newVal.length);
+            });
+          } else if (best) {
+            inlineSuggestionRef.current = { name: best.name, med: best.med, type: best.type };
+          } else {
+            inlineSuggestionRef.current = null;
+          }
+          setHighlighted(0);
+        }
       } catch { setSuggestions([]); }
-    }, 150);
+    }, 80);
   }
 
-  function pick(med: MedicineRef, brand: string, type: "generic" | "brand") {
-    const name = type === "generic" ? med.generic : brand;
+  function pick(med: MedicineRef, name: string, type: "generic" | "brand") {
+    userTypingRef.current = false;
     const autoForm = med.forms[0] || "";
     setAvailDosages(med.dosages);
     setAvailForms(med.forms);
     onChange({
-      ...entry,
-      name,
-      generic: med.generic,
-      type,
-      form: autoForm,
+      ...entry, name, generic: med.generic, type, form: autoForm,
       dosage: med.dosages.length === 1 ? med.dosages[0] : entry.dosage,
     });
     setQuery(name);
     setShowSugg(false);
-    if (med.defaultAdvice && onAdviceAdd) {
-      onAdviceAdd(med.defaultAdvice);
+    setSuggestions([]);
+    if (med.defaultAdvice && onAdviceAdd) onAdviceAdd(med.defaultAdvice);
+  }
+
+  function acceptInline() {
+    // Accept whatever is in the input (including the auto-completed part)
+    if (inlineSuggestionRef.current) {
+      const { med, name, type } = inlineSuggestionRef.current;
+      pick(med, name, type);
+      inlineSuggestionRef.current = null;
+      return;
+    }
+    const current = query;
+    const match = flatItems.find((item) => item.name.toLowerCase() === current.toLowerCase());
+    if (match) {
+      pick(match.med, match.name, match.type);
+    } else {
+      setShowSugg(false);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Backspace" || e.key === "Delete") {
+      deletingRef.current = true;
+      return;
+    }
+    deletingRef.current = false;
+    if (e.key === "Tab" || (e.key === "Enter" && highlighted < 0)) {
+      // Accept inline suggestion
+      if (inlineSuggestionRef.current) {
+        e.preventDefault();
+        const { med, name, type } = inlineSuggestionRef.current;
+        pick(med, name, type);
+        inlineSuggestionRef.current = null;
+        return;
+      }
+      if (showSugg && query) {
+        const match = flatItems.find((item) => item.name.toLowerCase() === query.toLowerCase());
+        if (match) {
+          e.preventDefault();
+          pick(match.med, match.name, match.type);
+          return;
+        }
+      }
+      if (e.key === "Enter") { e.preventDefault(); acceptInline(); }
+      return;
+    }
+    if (!showSugg || flatItems.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlighted((h) => (h + 1) % flatItems.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlighted((h) => (h <= 0 ? flatItems.length - 1 : h - 1));
+    } else if (e.key === "Enter" && highlighted >= 0) {
+      e.preventDefault();
+      const item = flatItems[highlighted];
+      pick(item.med, item.name, item.type);
+    } else if (e.key === "Escape") {
+      setShowSugg(false);
     }
   }
 
@@ -95,27 +239,29 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
       </div>
       <div className="grid gap-2 sm:grid-cols-[1fr_120px_120px]">
         <div className="relative">
-          <input value={query} onChange={(e) => handleSearch(e.target.value)}
+          <input ref={inputRef} value={query}
+            onChange={(e) => handleSearch(e.target.value)}
             onFocus={() => { if (suggestions.length) setShowSugg(true); }}
             onBlur={() => setTimeout(() => setShowSugg(false), 200)}
-            placeholder="Medicine name (brand or generic)..."
+            onKeyDown={handleKeyDown}
+            placeholder="Type medicine name..."
+            autoComplete="off"
             className={inputClass} />
-          {showSugg && (
-            <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-              {suggestions.map((s) => (
-                <div key={s.generic} className="border-b border-slate-100 px-3 py-2 last:border-0">
-                  <button type="button" onClick={() => pick(s, s.generic, "generic")}
-                    className="block w-full text-left text-sm font-medium text-ink hover:text-brand">
-                    {s.generic} <span className="text-xs text-muted">({s.forms[0] || "—"}) {s.dosages.slice(0, 3).join(", ")}</span>
-                  </button>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {s.brands.map((b) => (
-                      <button key={b} type="button" onClick={() => pick(s, b, "brand")}
-                        className="rounded bg-brand-light px-1.5 py-0.5 text-xs text-brand-dark hover:bg-brand/20">{b}</button>
-                    ))}
-                  </div>
-                </div>
+          {showSugg && flatItems.length > 0 && (
+            <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+              {flatItems.map((item, i) => (
+                <button key={`${item.name}-${i}`} type="button"
+                  onClick={() => pick(item.med, item.name, item.type)}
+                  onMouseEnter={() => setHighlighted(i)}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition ${
+                    i === highlighted ? "bg-brand-light text-brand-dark" : "hover:bg-slate-50"
+                  } ${item.type === "generic" ? "font-medium text-ink" : "text-muted pl-5"}`}>
+                  <span>{item.name}</span>
+                  {item.type === "generic" && <span className="ml-auto text-xs text-muted">{shortForm(item.med.forms[0] || "")} {item.med.dosages[0] || ""}</span>}
+                  {item.type === "brand" && <span className="ml-auto text-xs text-slate-400">{item.med.generic}</span>}
+                </button>
               ))}
+              <div className="border-t border-slate-100 px-3 py-1 text-[10px] text-slate-400">↑↓ navigate · Enter/Tab accept · Esc close</div>
             </div>
           )}
         </div>
@@ -151,7 +297,6 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
     </div>
   );
 }
-
 export default function ConsultationForm({ patient, doctor, prescriptionConfig, chambers, appointments, pending, feeStructure, onSave }: {
   patient: Patient;
   doctor: DoctorInfo;
@@ -163,6 +308,8 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
   onSave: (kind: RecordKind, data: object, reset: () => void) => void;
   editingConsultation?: Consultation | null;
 }) {
+  const { toast } = useToast();
+  const [customAdviceInput, setCustomAdviceInput] = useState("");
   const todayDate = today();
   const patientAppointment = appointments.find(
     (a) =>
@@ -187,6 +334,8 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
         onExamination: lastC.onExamination,
         diagnosis: [...lastC.diagnosis],
         medicines: lastC.medicines.map((m) => ({ ...m })),
+        investigations: [...(lastC.investigations || [])],
+        investigationDiscount: lastC.investigationDiscount ?? 0,
         advices: [...lastC.advices],
         followUp: lastC.followUp,
         notes: "",
@@ -202,12 +351,33 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
         diagnosis: [""],
         medicines: [{ ...emptyMed }],
         advices: [],
+        investigations: [],
+        investigationDiscount: 0,
         followUp: "",
         notes: "",
         attachment: "",
       };
 
-  const [c, setC] = useState<Omit<Consultation, "id">>(initialConsultation);
+  const [c, setC] = useState<Omit<Consultation, "id">>(() => {
+    const base = initialConsultation;
+    // Pre-fill vitals from pending vitals if available
+    const pv = patient.pendingVitals;
+    if (pv && (pv.bp || pv.weight)) {
+      base.vitals = {
+        bp: pv.bp || base.vitals.bp,
+        pulse: pv.pulse || base.vitals.pulse,
+        weight: pv.weight || base.vitals.weight,
+        spo2: pv.spo2 || base.vitals.spo2,
+        temperature: pv.temperature || base.vitals.temperature,
+        others: base.vitals.others,
+      };
+      if (pv.complaint && base.chiefComplaint[0] === "") {
+        base.chiefComplaint = [pv.complaint];
+      }
+    }
+    return base;
+  });
+  const hasPendingVitals = !!(patient.pendingVitals && (patient.pendingVitals.bp || patient.pendingVitals.weight));
 
   const computedFee = (() => {
     if (!feeStructure) return 0;
@@ -228,14 +398,13 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
 
   const setComplaint = (i: number, v: string) => setC({ ...c, chiefComplaint: c.chiefComplaint.map((x, idx) => idx === i ? v : x) });
   const setDiagnosis = (i: number, v: string) => setC({ ...c, diagnosis: c.diagnosis.map((x, idx) => idx === i ? v : x) });
-  const setAdvice = (i: number, v: string) => setC({ ...c, advices: c.advices.map((x, idx) => idx === i ? v : x) });
 
   function resetConsultation() {
     setC({
       date: today(),
       vitals: { bp: "", pulse: "", weight: "", spo2: "", temperature: "", others: "" },
       chiefComplaint: [""], history: "", onExamination: "", diagnosis: [""],
-      medicines: [{ ...emptyMed }], advices: [""], followUp: "", notes: "", attachment: "",
+      medicines: [{ ...emptyMed }], investigations: [], investigationDiscount: 0, advices: [], followUp: "", notes: "", attachment: "",
     });
   }
 
@@ -272,9 +441,16 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
   }
 
   function handleSave() {
-    onSave("consultations", { ...c, chiefComplaint: c.chiefComplaint.filter(Boolean), diagnosis: c.diagnosis.filter(Boolean), advices: c.advices.filter(Boolean), payment }, () => {
+    onSave("consultations", { ...c, chiefComplaint: c.chiefComplaint.filter(Boolean), diagnosis: c.diagnosis.filter(Boolean), advices: c.advices.filter(Boolean), payment }, async () => {
       resetConsultation();
       try { localStorage.removeItem(draftKey); } catch {}
+      // Clear pending vitals if they existed
+      if (hasPendingVitals) {
+        try {
+          await clearPendingVitalsAction(patient.id);
+        } catch {}
+      }
+      toast("success", "Consultation saved successfully");
     });
   }
 
@@ -318,6 +494,21 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
         </div>
       )}
 
+      {hasPendingVitals && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2.5">
+          <span className="text-sm text-yellow-900 font-medium">
+            Vitals recorded by {patient.pendingVitals!.recordedByName} at {new Date(patient.pendingVitals!.recordedAt).toLocaleTimeString()}:
+          </span>
+          <span className="text-sm text-yellow-800">
+            {patient.pendingVitals!.bp && `BP ${patient.pendingVitals!.bp}`}
+            {patient.pendingVitals!.spo2 && `, SpO₂ ${patient.pendingVitals!.spo2}`}
+            {patient.pendingVitals!.weight && `, Wt ${patient.pendingVitals!.weight}`}
+            {patient.pendingVitals!.temperature && `, Temp ${patient.pendingVitals!.temperature}`}
+            {patient.pendingVitals!.pulse && `, Pulse ${patient.pendingVitals!.pulse}`}
+          </span>
+        </div>
+      )}
+
       <div className="mt-4 space-y-4">
         <div className="flex flex-wrap gap-4">
           <div>
@@ -338,7 +529,7 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
         </div>
 
         {/* Two-column prescription-style layout */}
-        <div className="grid gap-4 lg:grid-cols-[38%_1fr]">
+        <div className="grid gap-4 lg:grid-cols-[30%_1fr]">
           {/* LEFT: Examination */}
           <div className="space-y-3 rounded-lg border-l-4 border-brand bg-slate-50 p-4">
             <div>
@@ -346,7 +537,9 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
               {c.chiefComplaint.map((v, i) => (
                 <div key={i} className="mt-1 flex gap-2">
                   <span className="mt-2 text-xs text-muted">•</span>
-                  <input value={v} onChange={(e) => setComplaint(i, e.target.value)} className={inputClass} placeholder={`Complaint ${i + 1}`} />
+                  <input value={v} onChange={(e) => setComplaint(i, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setC((prev) => ({ ...prev, chiefComplaint: [...prev.chiefComplaint, ""] })); setTimeout(() => { const inputs = document.querySelectorAll<HTMLInputElement>('[placeholder^="Complaint"]'); inputs[inputs.length - 1]?.focus(); }, 50); } }}
+                    className={inputClass} placeholder={`Complaint ${i + 1}`} />
                   {c.chiefComplaint.length > 1 && <button type="button" onClick={() => setC({ ...c, chiefComplaint: c.chiefComplaint.filter((_, idx) => idx !== i) })} className="text-xs text-red-600">✕</button>}
                 </div>
               ))}
@@ -375,11 +568,41 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
               {c.diagnosis.map((v, i) => (
                 <div key={i} className="mt-1 flex gap-2">
                   <span className="mt-2 text-xs text-muted">•</span>
-                  <DiagnosisAutocomplete value={v} onChange={(val) => setDiagnosis(i, val)} suggestions={prescriptionConfig.predefinedDiagnoses ?? []} placeholder={`Diagnosis ${i + 1}`} />
+                  <DiagnosisAutocomplete value={v} onChange={(val) => setDiagnosis(i, val)} suggestions={prescriptionConfig.predefinedDiagnoses ?? []} placeholder={`Diagnosis ${i + 1}`}
+                    onEnterAdd={() => { setC((prev) => ({ ...prev, diagnosis: [...prev.diagnosis, ""] })); setTimeout(() => { const inputs = document.querySelectorAll<HTMLInputElement>('[placeholder^="Diagnosis"]'); inputs[inputs.length - 1]?.focus(); }, 50); }}
+                  />
                   {c.diagnosis.length > 1 && <button type="button" onClick={() => setC({ ...c, diagnosis: c.diagnosis.filter((_, idx) => idx !== i) })} className="text-xs text-red-600">✕</button>}
                 </div>
               ))}
               <button type="button" onClick={() => setC({ ...c, diagnosis: [...c.diagnosis, ""] })} className="mt-1 text-xs font-medium text-brand">+ Add</button>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-brand">Investigation</label>
+              {c.investigations.map((v, i) => (
+                <div key={i} className="mt-1 flex gap-2">
+                  <span className="mt-2 text-xs text-muted">{i + 1}.</span>
+                  <InvestigationAutocomplete
+                    value={v}
+                    onChange={(val) => setC({ ...c, investigations: c.investigations.map((x, idx) => idx === i ? val : x) })}
+                    placeholder="Test name (e.g. CBC, X-ray)"
+                    onEnterAdd={() => { setC((prev) => ({ ...prev, investigations: [...prev.investigations, ""] })); setTimeout(() => { const inputs = document.querySelectorAll<HTMLInputElement>('[placeholder^="Test name"]'); inputs[inputs.length - 1]?.focus(); }, 50); }}
+                  />
+                  <button type="button" onClick={() => setC({ ...c, investigations: c.investigations.filter((_, idx) => idx !== i) })} className="text-xs text-red-600">✕</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setC({ ...c, investigations: [...c.investigations, ""] })} className="mt-1 text-xs font-medium text-brand">+ Add investigation</button>
+              <div className="mt-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Discount %"
+                  value={c.investigationDiscount || ""}
+                  onChange={(e) => setC({ ...c, investigationDiscount: Number(e.target.value) || 0 })}
+                  className={`${inputClass} max-w-[120px]`}
+                />
+              </div>
             </div>
           </div>
 
@@ -407,28 +630,64 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
               </button>
             </div>
 
+            {/* Investigations moved to left column */}
+
             <div className="border-t border-slate-100 pt-3">
               <label className="text-xs font-bold uppercase tracking-wide text-brand">Advices</label>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {prescriptionConfig.predefinedAdvices.slice(0, 8).map((adv) => {
-                  const added = c.advices.includes(adv);
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {prescriptionConfig.predefinedAdvices.map((adv) => {
+                  const idx = c.advices.indexOf(adv);
+                  const isSelected = idx >= 0;
                   return (
                     <button key={adv} type="button"
-                      onClick={() => { if (!added) setC({ ...c, advices: [...c.advices.filter(Boolean), adv] }); }}
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition ${added ? "bg-brand text-white" : "bg-slate-100 text-ink hover:bg-brand-light"}`}>
-                      {added ? "✓" : "+"} {adv.slice(0, 20)}{adv.length > 20 ? "…" : ""}
+                      onClick={() => {
+                        if (isSelected) {
+                          setC({ ...c, advices: c.advices.filter((a) => a !== adv) });
+                        } else {
+                          setC({ ...c, advices: [...c.advices, adv] });
+                        }
+                      }}
+                      className={`relative rounded-full px-3 py-1 text-xs font-medium transition ${isSelected ? "bg-brand text-white ring-2 ring-brand/30" : "bg-slate-100 text-ink hover:bg-brand-light"}`}>
+                      {isSelected && (
+                        <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-dark text-[10px] font-bold text-white">{idx + 1}</span>
+                      )}
+                      {adv.length > 25 ? adv.slice(0, 25) + "…" : adv}
                     </button>
                   );
                 })}
               </div>
-              {c.advices.map((v, i) => (
-                <div key={i} className="mt-1 flex gap-2">
-                  <span className="mt-2 text-xs text-muted">{i + 1}.</span>
-                  <input value={v} onChange={(e) => setAdvice(i, e.target.value)} className={inputClass} placeholder="Advice" />
-                  <button type="button" onClick={() => setC({ ...c, advices: c.advices.filter((_, idx) => idx !== i) })} className="text-xs text-red-600">✕</button>
+              {/* Show custom (non-predefined) selected advices */}
+              {c.advices.filter((a) => !prescriptionConfig.predefinedAdvices.includes(a)).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {c.advices.filter((a) => !prescriptionConfig.predefinedAdvices.includes(a)).map((adv) => {
+                    const idx = c.advices.indexOf(adv);
+                    return (
+                      <button key={adv} type="button"
+                        onClick={() => setC({ ...c, advices: c.advices.filter((a) => a !== adv) })}
+                        className="relative rounded-full bg-brand text-white ring-2 ring-brand/30 px-3 py-1 text-xs font-medium transition">
+                        <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-dark text-[10px] font-bold text-white">{idx + 1}</span>
+                        {adv.length > 25 ? adv.slice(0, 25) + "…" : adv}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
-              <button type="button" onClick={() => setC({ ...c, advices: [...c.advices, ""] })} className="mt-1 text-xs font-medium text-brand">+ Custom</button>
+              )}
+              <input
+                value={customAdviceInput}
+                onChange={(e) => setCustomAdviceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customAdviceInput.trim()) {
+                    e.preventDefault();
+                    const val = customAdviceInput.trim();
+                    if (!c.advices.includes(val)) {
+                      setC({ ...c, advices: [...c.advices, val] });
+                    }
+                    setCustomAdviceInput("");
+                  }
+                }}
+                className={`${inputClass} mt-2`}
+                placeholder="Type custom advice + Enter"
+              />
             </div>
 
             <div className="border-t border-slate-100 pt-3">

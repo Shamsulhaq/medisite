@@ -183,13 +183,10 @@ export default function PatientsExplorer({
                     <td className="px-5 py-3">
                       <div className="flex flex-wrap gap-1.5 text-xs text-muted">
                         <span className="rounded bg-slate-100 px-1.5 py-0.5">
-                          {p.history.length} history
+                          {p.consultations.length} consultation{p.consultations.length !== 1 ? "s" : ""}
                         </span>
                         <span className="rounded bg-slate-100 px-1.5 py-0.5">
-                          {p.prescriptions.length} Rx
-                        </span>
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5">
-                          {p.testReports.length} tests
+                          {p.testReports.length} test{p.testReports.length !== 1 ? "s" : ""}
                         </span>
                       </div>
                     </td>

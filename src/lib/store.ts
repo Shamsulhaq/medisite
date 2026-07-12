@@ -1,12 +1,10 @@
 // -----------------------------------------------------------------------------
-// JSON-file backed data store for editable site content (settings + blog posts).
-// Reads normalize legacy plain-string fields into LocalizedString so older
-// stored data keeps working after the bilingual migration.
+// Data store for site settings + blog posts — backed by PostgreSQL via Prisma.
+// Maintains the same external API as the previous JSON-file-based version.
 // -----------------------------------------------------------------------------
 
-import { promises as fs } from "fs";
-import path from "path";
 import crypto from "crypto";
+import prisma from "@/lib/db";
 import type {
   BlogPost,
   SiteSettings,
@@ -20,33 +18,9 @@ import { toLS, isLocale, type LocalizedString } from "./i18n";
 import { defaultSettings, defaultPosts } from "./defaults";
 import { normalizeAvailability, normalizeAppointmentConfig } from "./availability";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
-const POSTS_FILE = path.join(DATA_DIR, "posts.json");
-
-async function ensureDir(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-}
-
-async function readJson<T>(file: string, fallback: T): Promise<T> {
-  await ensureDir();
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    await fs.writeFile(file, JSON.stringify(fallback, null, 2), "utf8");
-    return fallback;
-  }
-}
-
-async function writeJson<T>(file: string, value: T): Promise<void> {
-  await ensureDir();
-  await fs.writeFile(file, JSON.stringify(value, null, 2), "utf8");
-}
-
 // ---- Settings normalization ------------------------------------------------
 
-function normalizeFeeStructure(raw: unknown): import("./types").SiteSettings["feeStructure"] {
+function normalizeFeeStructure(raw: unknown): SiteSettings["feeStructure"] {
   const d = defaultSettings.feeStructure;
   const f = (raw ?? {}) as Record<string, unknown>;
   return {
@@ -192,6 +166,7 @@ function normalizeSettings(raw: any): SiteSettings {
     email: normalizeEmail(s.email),
     prescription: normalizePrescriptionConfig(s.prescription),
     prescriptionTemplates: Array.isArray(s.prescriptionTemplates) ? s.prescriptionTemplates : [],
+    blog: normalizeBlogConfig(s.blog),
   };
 }
 
@@ -231,6 +206,15 @@ function normalizeEmail(raw: unknown): import("./types").EmailConfig {
   };
 }
 
+function normalizeBlogConfig(raw: unknown): import("./types").BlogConfig {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const d = defaultSettings.blog;
+  return {
+    categories: Array.isArray(b.categories) ? b.categories : d.categories,
+    defaultDisclaimer: typeof b.defaultDisclaimer === "string" ? b.defaultDisclaimer : d.defaultDisclaimer,
+  };
+}
+
 function normalizePost(raw: any): BlogPost {
   return {
     id: String(raw.id ?? crypto.randomUUID()),
@@ -244,41 +228,140 @@ function normalizePost(raw: any): BlogPost {
     coverImage: typeof raw.coverImage === "string" ? raw.coverImage : "",
     published: Boolean(raw.published),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
+    category: typeof raw.category === "string" ? raw.category : "",
+    metaTitle: typeof raw.metaTitle === "string" ? raw.metaTitle : "",
+    metaDescription: typeof raw.metaDescription === "string" ? raw.metaDescription : "",
+    ogImage: typeof raw.ogImage === "string" ? raw.ogImage : "",
+    reviewedBy: typeof raw.reviewedBy === "string" ? raw.reviewedBy : "",
+    reviewedDate: typeof raw.reviewedDate === "string" ? raw.reviewedDate : "",
+    references: typeof raw.references === "string" ? raw.references : "",
+    disclaimer: typeof raw.disclaimer === "string" ? raw.disclaimer : "",
+    scheduledDate: typeof raw.scheduledDate === "string" ? raw.scheduledDate : "",
+    viewCount: typeof raw.viewCount === "number" ? raw.viewCount : 0,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-// ---- Settings --------------------------------------------------------------
+// ---- Settings (PostgreSQL) -------------------------------------------------
 
 export async function getSettings(): Promise<SiteSettings> {
-  const stored = await readJson<unknown>(SETTINGS_FILE, defaultSettings);
-  return normalizeSettings(stored);
+  const row = await prisma.setting.findUnique({ where: { id: "main" } });
+  if (!row) {
+    // First run — seed with defaults
+    const normalized = normalizeSettings(defaultSettings);
+    await prisma.setting.create({
+      data: { id: "main", data: normalized as unknown as object },
+    });
+    return normalized;
+  }
+  return normalizeSettings(row.data);
 }
 
 export async function saveSettings(settings: SiteSettings): Promise<void> {
-  await writeJson(SETTINGS_FILE, normalizeSettings(settings));
+  const normalized = normalizeSettings(settings);
+  await prisma.setting.upsert({
+    where: { id: "main" },
+    create: { id: "main", data: normalized as unknown as object },
+    update: { data: normalized as unknown as object },
+  });
 }
 
-// ---- Blog posts ------------------------------------------------------------
+// ---- Blog posts (PostgreSQL) -----------------------------------------------
+
+function dbPostToType(row: {
+  id: string;
+  slug: string;
+  title: unknown;
+  excerpt: unknown;
+  body: unknown;
+  date: string;
+  readingMinutes: number;
+  tags: string[];
+  coverImage: string;
+  published: boolean;
+  category: string;
+  metaTitle: string;
+  metaDescription: string;
+  ogImage: string;
+  reviewedBy: string;
+  reviewedDate: string;
+  references: string;
+  disclaimer: string;
+  scheduledDate: string;
+  viewCount: number;
+  updatedAt: Date;
+}): BlogPost {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: toLS(row.title),
+    excerpt: toLS(row.excerpt),
+    body: toLS(row.body),
+    date: row.date,
+    readingMinutes: row.readingMinutes,
+    tags: row.tags,
+    coverImage: row.coverImage,
+    published: row.published,
+    updatedAt: row.updatedAt.toISOString(),
+    category: row.category,
+    metaTitle: row.metaTitle,
+    metaDescription: row.metaDescription,
+    ogImage: row.ogImage,
+    reviewedBy: row.reviewedBy,
+    reviewedDate: row.reviewedDate,
+    references: row.references,
+    disclaimer: row.disclaimer,
+    scheduledDate: row.scheduledDate,
+    viewCount: row.viewCount,
+  };
+}
 
 export async function getPosts(): Promise<BlogPost[]> {
-  const posts = await readJson<unknown[]>(POSTS_FILE, defaultPosts);
-  const normalized = (Array.isArray(posts) ? posts : []).map(normalizePost);
-  return normalized.sort((a, b) => (a.date < b.date ? 1 : -1));
+  const rows = await prisma.blogPost.findMany({ orderBy: { date: "desc" } });
+  if (rows.length === 0) {
+    // Seed default posts on first run
+    const posts = defaultPosts.map(normalizePost);
+    for (const p of posts) {
+      await prisma.blogPost.create({
+        data: {
+          id: p.id,
+          slug: p.slug,
+          title: p.title as unknown as object,
+          excerpt: p.excerpt as unknown as object,
+          body: p.body as unknown as object,
+          date: p.date,
+          readingMinutes: p.readingMinutes,
+          tags: p.tags,
+          coverImage: p.coverImage ?? "",
+          published: p.published,
+        },
+      });
+    }
+    return posts;
+  }
+  return rows.map(dbPostToType);
 }
 
 export async function getPublishedPosts(): Promise<BlogPost[]> {
-  return (await getPosts()).filter((p) => p.published);
+  const rows = await prisma.blogPost.findMany({
+    where: { published: true },
+    orderBy: { date: "desc" },
+  });
+  return rows.map(dbPostToType);
 }
 
 export async function getPostById(id: string): Promise<BlogPost | undefined> {
-  return (await getPosts()).find((p) => p.id === id);
+  const row = await prisma.blogPost.findUnique({ where: { id } });
+  if (!row) return undefined;
+  return dbPostToType(row);
 }
 
 export async function getPostBySlug(
   slug: string
 ): Promise<BlogPost | undefined> {
-  return (await getPosts()).find((p) => p.slug === slug);
+  const row = await prisma.blogPost.findUnique({ where: { slug } });
+  if (!row) return undefined;
+  return dbPostToType(row);
 }
 
 export function slugify(input: string): string {
@@ -295,10 +378,12 @@ async function ensureUniqueSlug(
   slug: string,
   ignoreId?: string
 ): Promise<string> {
-  const posts = await getPosts();
   let candidate = slug || "post";
   let n = 2;
-  while (posts.some((p) => p.slug === candidate && p.id !== ignoreId)) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const existing = await prisma.blogPost.findUnique({ where: { slug: candidate } });
+    if (!existing || existing.id === ignoreId) break;
     candidate = `${slug}-${n}`;
     n += 1;
   }
@@ -315,6 +400,15 @@ export type PostInput = {
   body: LocalizedString;
   coverImage?: string;
   published: boolean;
+  category?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  ogImage?: string;
+  reviewedBy?: string;
+  reviewedDate?: string;
+  references?: string;
+  disclaimer?: string;
+  scheduledDate?: string;
 };
 
 function baseSlug(input: PostInput): string {
@@ -322,56 +416,119 @@ function baseSlug(input: PostInput): string {
 }
 
 export async function createPost(input: PostInput): Promise<BlogPost> {
-  const posts = await getPosts();
   const slug = await ensureUniqueSlug(baseSlug(input));
-  const post: BlogPost = {
-    id: crypto.randomUUID(),
-    slug,
-    title: input.title,
-    excerpt: input.excerpt,
-    date: input.date,
-    readingMinutes: input.readingMinutes,
-    tags: input.tags,
-    body: input.body,
-    coverImage: input.coverImage ?? "",
-    published: input.published,
-    updatedAt: new Date().toISOString(),
-  };
-  posts.push(post);
-  await writeJson(POSTS_FILE, posts);
-  return post;
+  const row = await prisma.blogPost.create({
+    data: {
+      slug,
+      title: input.title as object,
+      excerpt: input.excerpt as object,
+      body: input.body as object,
+      date: input.date,
+      readingMinutes: input.readingMinutes,
+      tags: input.tags,
+      coverImage: input.coverImage ?? "",
+      published: input.published,
+      category: input.category ?? "",
+      metaTitle: input.metaTitle ?? "",
+      metaDescription: input.metaDescription ?? "",
+      ogImage: input.ogImage ?? "",
+      reviewedBy: input.reviewedBy ?? "",
+      reviewedDate: input.reviewedDate ?? "",
+      references: input.references ?? "",
+      disclaimer: input.disclaimer ?? "",
+      scheduledDate: input.scheduledDate ?? "",
+    },
+  });
+  // Save revision
+  await prisma.blogRevision.create({
+    data: {
+      postId: row.id,
+      data: dbPostToType(row) as unknown as object,
+    },
+  });
+  return dbPostToType(row);
 }
 
 export async function updatePost(
   id: string,
   input: PostInput
 ): Promise<BlogPost | undefined> {
-  const posts = await getPosts();
-  const idx = posts.findIndex((p) => p.id === id);
-  if (idx === -1) return undefined;
+  const existing = await prisma.blogPost.findUnique({ where: { id } });
+  if (!existing) return undefined;
   const slug = await ensureUniqueSlug(baseSlug(input), id);
-  const updated: BlogPost = {
-    ...posts[idx],
-    slug,
-    title: input.title,
-    excerpt: input.excerpt,
-    date: input.date,
-    readingMinutes: input.readingMinutes,
-    tags: input.tags,
-    body: input.body,
-    coverImage: input.coverImage ?? "",
-    published: input.published,
-    updatedAt: new Date().toISOString(),
-  };
-  posts[idx] = updated;
-  await writeJson(POSTS_FILE, posts);
-  return updated;
+  const row = await prisma.blogPost.update({
+    where: { id },
+    data: {
+      slug,
+      title: input.title as object,
+      excerpt: input.excerpt as object,
+      body: input.body as object,
+      date: input.date,
+      readingMinutes: input.readingMinutes,
+      tags: input.tags,
+      coverImage: input.coverImage ?? "",
+      published: input.published,
+      category: input.category ?? "",
+      metaTitle: input.metaTitle ?? "",
+      metaDescription: input.metaDescription ?? "",
+      ogImage: input.ogImage ?? "",
+      reviewedBy: input.reviewedBy ?? "",
+      reviewedDate: input.reviewedDate ?? "",
+      references: input.references ?? "",
+      disclaimer: input.disclaimer ?? "",
+      scheduledDate: input.scheduledDate ?? "",
+    },
+  });
+  // Save revision
+  await prisma.blogRevision.create({
+    data: {
+      postId: row.id,
+      data: dbPostToType(row) as unknown as object,
+    },
+  });
+  return dbPostToType(row);
 }
 
 export async function deletePost(id: string): Promise<boolean> {
-  const posts = await getPosts();
-  const next = posts.filter((p) => p.id !== id);
-  if (next.length === posts.length) return false;
-  await writeJson(POSTS_FILE, next);
-  return true;
+  try {
+    await prisma.blogPost.delete({ where: { id } });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function incrementViewCount(slug: string): Promise<void> {
+  try {
+    await prisma.blogPost.update({
+      where: { slug },
+      data: { viewCount: { increment: 1 } },
+    });
+  } catch {
+    // silently fail if post not found
+  }
+}
+
+export async function getRevisions(postId: string) {
+  const rows = await prisma.blogRevision.findMany({
+    where: { postId },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    postId: r.postId,
+    data: r.data as unknown as BlogPost,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function getRevision(id: string) {
+  const row = await prisma.blogRevision.findUnique({ where: { id } });
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    postId: row.postId,
+    data: row.data as unknown as BlogPost,
+    createdAt: row.createdAt.toISOString(),
+  };
 }

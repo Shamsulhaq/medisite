@@ -46,3 +46,5 @@ next-env.d.ts
 # uploaded media (user content) — keep the folder, ignore its contents
 /public/uploads/*
 !/public/uploads/.gitkeep
+
+/src/generated/prisma

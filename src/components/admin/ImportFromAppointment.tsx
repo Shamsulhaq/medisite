@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Appointment } from "@/lib/types";
 import { createPatientFromAppointmentAction } from "@/app/admin/patient-actions";
+import { useToast } from "@/components/admin/ToastProvider";
 
 export default function ImportFromAppointment({
   appointments,
@@ -12,15 +13,20 @@ export default function ImportFromAppointment({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const { toast } = useToast();
 
   function importPatient(id: string) {
     startTransition(async () => {
-      const res = await createPatientFromAppointmentAction(id);
-      if (res.ok && res.id) {
-        router.push(`/admin/patients/${res.id}`);
-        router.refresh();
-      } else if (res.error) {
-        alert(res.error);
+      try {
+        const res = await createPatientFromAppointmentAction(id);
+        if (res.ok && res.id) {
+          router.push(`/admin/patients/${res.id}`);
+          router.refresh();
+        } else if (res.error) {
+          toast("error", res.error);
+        }
+      } catch {
+        toast("error", "Something went wrong");
       }
     });
   }

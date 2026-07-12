@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getPatientById } from "@/lib/patients";
 import { getSettings } from "@/lib/store";
 import { getAppointments } from "@/lib/appointments";
+import { getCurrentUser } from "@/lib/rbac";
 import { t } from "@/lib/i18n";
 import PatientForm from "@/components/admin/PatientForm";
 import PatientRecords from "@/components/admin/PatientRecords";
@@ -23,10 +24,11 @@ export default async function PatientDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [patient, settings, appointments] = await Promise.all([
+  const [patient, settings, appointments, currentUser] = await Promise.all([
     getPatientById(id),
     getSettings(),
     getAppointments(),
+    getCurrentUser(),
   ]);
 
   if (!patient) {
@@ -56,13 +58,7 @@ export default async function PatientDetailPage({
           ← Back to patients
         </Link>
         <div className="flex items-center gap-3">
-          <Link
-            href={`/admin/patients/${patient.id}/quick`}
-            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
-          >
-            ⚡ Quick Mode
-          </Link>
-          <DeletePatientButton id={patient.id} name={patient.name} />
+          {currentUser?.role === "DOCTOR" && <DeletePatientButton id={patient.id} name={patient.name} />}
         </div>
       </div>
 
@@ -95,6 +91,7 @@ export default async function PatientDetailPage({
         chambers={settings.appointment.chambers}
         appointments={appointments}
         feeStructure={settings.feeStructure}
+        permissions={currentUser?.permissions}
       />
 
       {/* Vitals Trend Chart - only shows if 2+ consultations have vitals */}

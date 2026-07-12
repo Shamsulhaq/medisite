@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- AUTH & RBAC ---
+
+enum UserRole {
+  DOCTOR
+  ATTENDANT
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  salt        String
+  hash        String
+  role        UserRole @default(ATTENDANT)
+  displayName String   @default("")
+  active      Boolean  @default(true)
+  permissions Json     @default("{}")  // customizable per-user permissions
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  auditLogs   AuditLog[]
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  userRole  UserRole
+  action    String   // CREATE, UPDATE, DELETE, LOGIN, PRINT, etc.
+  entity    String   // patient, consultation, appointment, etc.
+  entityId  String?
+  details   Json?    // additional context
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// --- SETTINGS ---
+
+model Setting {
+  id    String @id @default("main")
+  data  Json   // stores the full SiteSettings object
+  updatedAt DateTime @updatedAt
+}
+
+// --- BLOG ---
+
+model BlogPost {
+  id              String   @id @default(uuid())
+  slug            String   @unique
+  title           Json     // LocalizedString { en, bn }
+  excerpt         Json     // LocalizedString
+  body            Json     // LocalizedString (markdown)
+  date            String
+  readingMinutes  Int      @default(4)
+  tags            String[] @default([])
+  coverImage      String   @default("")
+  published       Boolean  @default(false)
+  category        String   @default("")
+  metaTitle       String   @default("")
+  metaDescription String   @default("")
+  ogImage         String   @default("")
+  reviewedBy      String   @default("")
+  reviewedDate    String   @default("")
+  references      String   @default("") // markdown formatted references
+  disclaimer      String   @default("") // per-post override, empty = use global
+  scheduledDate   String   @default("") // for scheduled publishing
+  viewCount       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model BlogRevision {
+  id        String   @id @default(uuid())
+  postId    String
+  data      Json     // full post snapshot
+  createdAt DateTime @default(now())
+  @@index([postId])
+}
+
+// --- PATIENTS ---
+
+model Patient {
+  id          String   @id @default(uuid())
+  patientId   String   @unique // sequential P-0001
+  name        String
+  age         String   @default("")
+  gender      String   @default("")
+  phone       String   @unique
+  email       String   @default("")
+  address     String   @default("")
+  notes       String   @default("")
+  // Pending vitals (entered by attendant, consumed by doctor)
+  pendingVitalsBp        String @default("")
+  pendingVitalsPulse     String @default("")
+  pendingVitalsWeight    String @default("")
+  pendingVitalsSpo2      String @default("")
+  pendingVitalsTemp      String @default("")
+  pendingVitalsComplaint String @default("")
+  pendingVitalsBy        String @default("")
+  pendingVitalsByName    String @default("")
+  pendingVitalsAt        String @default("")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  consultations Consultation[]
+  testReports   TestReport[]
+}
+
+model Consultation {
+  id               String   @id @default(uuid())
+  patientId        String
+  date             String
+  chamberId        String?
+  chiefComplaint   String[] @default([])
+  history          String   @default("")
+  onExamination    String   @default("")
+  diagnosis        String[] @default([])
+  // Vitals
+  vitalsBp         String   @default("")
+  vitalsPulse      String   @default("")
+  vitalsWeight     String   @default("")
+  vitalsSpo2       String   @default("")
+  vitalsTemp       String   @default("")
+  vitalsOthers     String   @default("")
+  // Medicines (stored as JSON array of MedicineEntry)
+  medicines        Json     @default("[]")
+  // Advices & follow-up
+  advices          String[] @default([])
+  investigations   String[] @default([]) // ordered tests/investigations
+  investigationDiscount Float @default(0)
+  followUp         String   @default("")
+  notes            String   @default("")
+  attachment       String   @default("")
+  // Payment
+  paymentFee       Float    @default(0)
+  paymentReceived  Float    @default(0)
+  paymentDiscount  Float    @default(0)
+  paymentStatus    String   @default("unpaid") // paid, unpaid, partial
+  // Audit trail (edit versioning)
+  previousVersionId String?
+  superseded       Boolean  @default(false)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  patient          Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([date])
+}
+
+model TestReport {
+  id         String   @id @default(uuid())
+  patientId  String
+  date       String
+  title      String
+  result     String   @default("")
+  attachment String   @default("")
+  createdAt  DateTime @default(now())
+
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+}
+
+// --- APPOINTMENTS ---
+
+model Appointment {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @default("")
+  phone     String
+  mode      String   @default("offline") // online, offline
+  location  String   @default("")
+  date      String
+  time      String
+  reason    String   @default("")
+  status    String   @default("pending") // pending, confirmed, cancelled
+  createdAt DateTime @default(now())
+
+  @@index([date])
+  @@index([phone])
+}
+
+// --- MEDICINES ---
+
+model Medicine {
+  id            String   @id @default(uuid())
+  generic       String   @unique
+  brands        String[] @default([])
+  forms         String[] @default([])
+  dosages       String[] @default([])
+  defaultAdvice String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// --- INVESTIGATIONS ---
+
+model Investigation {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  category  String   @default("") // e.g. "Blood", "Imaging", "Urine", "Cardiac"
+  aliases   String[] @default([]) // alternative names for search
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

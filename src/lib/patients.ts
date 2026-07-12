@@ -1,11 +1,11 @@
 // -----------------------------------------------------------------------------
-// Patient records store (data/patients.json). PRIVATE medical data — only ever
-// accessed from admin (authenticated) routes. Never exposed on the public site.
+// Patient records store — backed by PostgreSQL via Prisma.
+// PRIVATE medical data — only accessed from admin (authenticated) routes.
+// Maintains the same external API as the previous JSON-file-based version.
 // -----------------------------------------------------------------------------
 
-import { promises as fs } from "fs";
-import path from "path";
 import crypto from "crypto";
+import prisma from "@/lib/db";
 
 export type HistoryEntry = {
   id: string;
@@ -14,52 +14,50 @@ export type HistoryEntry = {
 };
 
 export type Vitals = {
-  bp: string; // e.g. "125/85 mmHg"
-  pulse: string; // e.g. "74 PM"
-  weight: string; // e.g. "71 kg"
-  spo2: string; // e.g. "99%"
-  temperature: string; // e.g. "98.6°F"
-  others: string; // e.g. "Lungs: Clear"
+  bp: string;
+  pulse: string;
+  weight: string;
+  spo2: string;
+  temperature: string;
+  others: string;
 };
 
 export type MedicineEntry = {
-  name: string; // brand or generic name e.g. "Symbion 6/200"
-  generic: string; // generic/salt name
+  name: string;
+  generic: string;
   type: "generic" | "brand";
-  form: string; // e.g. "Cap.", "Tab.", "Spray"
-  dosage: string; // e.g. "6/200", "10 mg", "27.5 mcg"
-  frequency: string; // e.g. "1+0+1"
-  timing: string; // e.g. "খাওয়ার আগে", "After meal"
-  duration: string; // e.g. "2 মাস", "7 days"
-  specialNote: string; // e.g. "ও প্রয়োজনে, ব্যবহারের পর কুলি করবেন"
+  form: string;
+  dosage: string;
+  frequency: string;
+  timing: string;
+  duration: string;
+  specialNote: string;
 };
 
 export type Consultation = {
   id: string;
-  date: string; // YYYY-MM-DD
-  chamberId?: string; // which chamber this consultation happened at
-  // Patient vitals & examination
+  date: string;
+  chamberId?: string;
   vitals: Vitals;
-  chiefComplaint: string[]; // bullet list
-  history: string; // vaccination, allergy notes
-  onExamination: string; // additional exam findings
-  diagnosis: string[]; // bullet list
-  // Prescription (Rx)
+  chiefComplaint: string[];
+  history: string;
+  onExamination: string;
+  diagnosis: string[];
   medicines: MedicineEntry[];
-  advices: string[]; // numbered advice list
-  followUp: string; // e.g. "৪ সপ্তাহ পর"
+  investigations: string[]; // ordered tests/investigations
+  investigationDiscount: number;
+  advices: string[];
+  followUp: string;
   notes: string;
   attachment?: string;
-  // Payment
   payment?: {
     fee: number;
     received: number;
     discount: number;
     status: "paid" | "unpaid" | "partial";
   };
-  // Audit trail
-  previousVersionId?: string; // points to the consultation this one supersedes
-  superseded?: boolean; // true if a newer version exists
+  previousVersionId?: string;
+  superseded?: boolean;
 };
 
 // Legacy types kept for backward compatibility with existing data
@@ -95,19 +93,30 @@ export type TestReport = {
 
 export type Patient = {
   id: string;
-  patientId: string; // sequential e.g. "P-0001"
+  patientId: string;
   name: string;
   age: string;
   gender: string;
-  phone: string; // unique identifier — no duplicates allowed
+  phone: string;
   email: string;
   address: string;
   notes: string;
-  visits: Visit[]; // legacy
+  visits: Visit[];
   consultations: Consultation[];
   history: HistoryEntry[];
   prescriptions: Prescription[];
   testReports: TestReport[];
+  pendingVitals?: {
+    bp: string;
+    spo2: string;
+    weight: string;
+    temperature: string;
+    pulse: string;
+    complaint: string;
+    recordedBy: string;
+    recordedByName: string;
+    recordedAt: string;
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -124,49 +133,181 @@ export type PatientInfoInput = {
 
 export type RecordKind = "consultations" | "visits" | "history" | "prescriptions" | "testReports";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const FILE = path.join(DATA_DIR, "patients.json");
+// ---- Helpers ---------------------------------------------------------------
 
-async function readAll(): Promise<Patient[]> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    const raw = await fs.readFile(FILE, "utf8");
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    await fs.writeFile(FILE, "[]", "utf8");
-    return [];
-  }
-}
-
-async function writeAll(patients: Patient[]): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(patients, null, 2), "utf8");
-}
-
-function normalize(p: Partial<Patient>): Patient {
-  const now = new Date().toISOString();
+function dbConsultationToType(row: {
+  id: string;
+  date: string;
+  chamberId: string | null;
+  chiefComplaint: string[];
+  history: string;
+  onExamination: string;
+  diagnosis: string[];
+  vitalsBp: string;
+  vitalsPulse: string;
+  vitalsWeight: string;
+  vitalsSpo2: string;
+  vitalsTemp: string;
+  vitalsOthers: string;
+  medicines: unknown;
+  investigations: string[];
+  investigationDiscount: number;
+  advices: string[];
+  followUp: string;
+  notes: string;
+  attachment: string;
+  paymentFee: number;
+  paymentReceived: number;
+  paymentDiscount: number;
+  paymentStatus: string;
+  previousVersionId: string | null;
+  superseded: boolean;
+}): Consultation {
   return {
-    id: p.id ?? crypto.randomUUID(),
-    patientId: p.patientId ?? "",
-    name: p.name ?? "",
-    age: p.age ?? "",
-    gender: p.gender ?? "",
-    phone: p.phone ?? "",
-    email: p.email ?? "",
-    address: p.address ?? "",
-    notes: p.notes ?? "",
-    visits: Array.isArray(p.visits) ? p.visits : [],
-    consultations: Array.isArray(p.consultations) ? p.consultations : [],
-    history: Array.isArray(p.history) ? p.history : [],
-    prescriptions: Array.isArray(p.prescriptions) ? p.prescriptions : [],
-    testReports: Array.isArray(p.testReports) ? p.testReports : [],
-    createdAt: p.createdAt ?? now,
-    updatedAt: p.updatedAt ?? now,
+    id: row.id,
+    date: row.date,
+    chamberId: row.chamberId ?? undefined,
+    vitals: {
+      bp: row.vitalsBp,
+      pulse: row.vitalsPulse,
+      weight: row.vitalsWeight,
+      spo2: row.vitalsSpo2,
+      temperature: row.vitalsTemp,
+      others: row.vitalsOthers,
+    },
+    chiefComplaint: row.chiefComplaint,
+    history: row.history,
+    onExamination: row.onExamination,
+    diagnosis: row.diagnosis,
+    medicines: Array.isArray(row.medicines) ? row.medicines as MedicineEntry[] : [],
+    investigations: row.investigations ?? [],
+    investigationDiscount: row.investigationDiscount ?? 0,
+    advices: row.advices,
+    followUp: row.followUp,
+    notes: row.notes,
+    attachment: row.attachment || undefined,
+    payment: {
+      fee: row.paymentFee,
+      received: row.paymentReceived,
+      discount: row.paymentDiscount,
+      status: row.paymentStatus as "paid" | "unpaid" | "partial",
+    },
+    previousVersionId: row.previousVersionId ?? undefined,
+    superseded: row.superseded,
   };
 }
 
-function nextPatientId(patients: Patient[]): string {
+function dbTestReportToType(row: {
+  id: string;
+  date: string;
+  title: string;
+  result: string;
+  attachment: string;
+}): TestReport {
+  return {
+    id: row.id,
+    date: row.date,
+    title: row.title,
+    result: row.result,
+    attachment: row.attachment || undefined,
+  };
+}
+
+function dbPatientToType(row: {
+  id: string;
+  patientId: string;
+  name: string;
+  age: string;
+  gender: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  createdAt: Date;
+  updatedAt: Date;
+  pendingVitalsBp?: string;
+  pendingVitalsPulse?: string;
+  pendingVitalsWeight?: string;
+  pendingVitalsSpo2?: string;
+  pendingVitalsTemp?: string;
+  pendingVitalsComplaint?: string;
+  pendingVitalsBy?: string;
+  pendingVitalsByName?: string;
+  pendingVitalsAt?: string;
+  consultations?: Array<{
+    id: string;
+    date: string;
+    chamberId: string | null;
+    chiefComplaint: string[];
+    history: string;
+    onExamination: string;
+    diagnosis: string[];
+    vitalsBp: string;
+    vitalsPulse: string;
+    vitalsWeight: string;
+    vitalsSpo2: string;
+    vitalsTemp: string;
+    vitalsOthers: string;
+    medicines: unknown;
+    advices: string[];
+    investigations: string[];
+    investigationDiscount: number;
+    followUp: string;
+    notes: string;
+    attachment: string;
+    paymentFee: number;
+    paymentReceived: number;
+    paymentDiscount: number;
+    paymentStatus: string;
+    previousVersionId: string | null;
+    superseded: boolean;
+  }>;
+  testReports?: Array<{
+    id: string;
+    date: string;
+    title: string;
+    result: string;
+    attachment: string;
+  }>;
+}): Patient {
+  return {
+    id: row.id,
+    patientId: row.patientId,
+    name: row.name,
+    age: row.age,
+    gender: row.gender,
+    phone: row.phone,
+    email: row.email,
+    address: row.address,
+    notes: row.notes,
+    visits: [], // legacy — not stored in new DB
+    consultations: (row.consultations ?? []).map((r: any) => dbConsultationToType(r)),
+    history: [], // legacy — not stored in new DB
+    prescriptions: [], // legacy — not stored in new DB
+    testReports: (row.testReports ?? []).map(dbTestReportToType),
+    pendingVitals: row.pendingVitalsAt ? {
+      bp: row.pendingVitalsBp ?? "",
+      spo2: row.pendingVitalsSpo2 ?? "",
+      weight: row.pendingVitalsWeight ?? "",
+      temperature: row.pendingVitalsTemp ?? "",
+      pulse: row.pendingVitalsPulse ?? "",
+      complaint: row.pendingVitalsComplaint ?? "",
+      recordedBy: row.pendingVitalsBy ?? "",
+      recordedByName: row.pendingVitalsByName ?? "",
+      recordedAt: row.pendingVitalsAt ?? "",
+    } : undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+async function nextPatientId(): Promise<string> {
+  // Get the max patientId sequence number from DB
+  const patients = await prisma.patient.findMany({
+    select: { patientId: true },
+    orderBy: { patientId: "desc" },
+    take: 1,
+  });
   let max = 0;
   for (const p of patients) {
     const m = /^P-(\d+)$/.exec(p.patientId);
@@ -178,87 +319,172 @@ function nextPatientId(patients: Patient[]): string {
   return `P-${String(max + 1).padStart(4, "0")}`;
 }
 
+// ---- Public API ------------------------------------------------------------
+
 export async function findByPhone(phone: string): Promise<Patient | undefined> {
   const normalized = phone.replace(/[\s\-()]/g, "");
-  return (await getPatients()).find(
+  // Try exact match first
+  const row = await prisma.patient.findFirst({
+    where: { phone: normalized },
+    include: { consultations: { orderBy: { date: "desc" } }, testReports: { orderBy: { date: "desc" } } },
+  });
+  if (row) return dbPatientToType(row);
+
+  // Fallback: search all patients with loose match
+  const all = await prisma.patient.findMany({
+    include: { consultations: { orderBy: { date: "desc" } }, testReports: { orderBy: { date: "desc" } } },
+  });
+  const found = all.find(
     (p) => p.phone.replace(/[\s\-()]/g, "") === normalized
   );
+  if (found) return dbPatientToType(found);
+  return undefined;
 }
 
 export async function getPatients(): Promise<Patient[]> {
-  const patients = (await readAll()).map(normalize);
-  return patients.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const rows = await prisma.patient.findMany({
+    include: { consultations: { orderBy: { date: "desc" } }, testReports: { orderBy: { date: "desc" } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(dbPatientToType);
 }
 
 export async function getPatientById(id: string): Promise<Patient | undefined> {
-  return (await getPatients()).find((p) => p.id === id);
+  const row = await prisma.patient.findUnique({
+    where: { id },
+    include: { consultations: { orderBy: { date: "desc" } }, testReports: { orderBy: { date: "desc" } } },
+  });
+  if (!row) return undefined;
+  return dbPatientToType(row);
 }
 
 export async function createPatient(
   input: PatientInfoInput
 ): Promise<{ patient?: Patient; error?: string }> {
-  const patients = await readAll();
   // Duplicate phone check
   const normalizedPhone = input.phone.replace(/[\s\-()]/g, "");
-  const dup = patients.find(
-    (p) => p.phone.replace(/[\s\-()]/g, "") === normalizedPhone
-  );
-  if (dup) {
-    return { error: `A patient with this phone already exists (${dup.patientId}: ${dup.name}).` };
-  }
-  const patient = normalize({
-    ...input,
-    patientId: nextPatientId(patients),
+  const existing = await prisma.patient.findFirst({
+    where: { phone: normalizedPhone },
   });
-  patients.push(patient);
-  await writeAll(patients);
-  return { patient };
+  if (existing) {
+    return {
+      error: `A patient with this phone already exists (${existing.patientId}: ${existing.name}).`,
+    };
+  }
+
+  const patientId = await nextPatientId();
+  const row = await prisma.patient.create({
+    data: {
+      patientId,
+      name: input.name,
+      age: input.age || "",
+      gender: input.gender || "",
+      phone: normalizedPhone,
+      email: input.email || "",
+      address: input.address || "",
+      notes: input.notes || "",
+    },
+    include: { consultations: true, testReports: true },
+  });
+  return { patient: dbPatientToType(row) };
 }
 
 export async function updatePatientInfo(
   id: string,
   input: PatientInfoInput
 ): Promise<Patient | undefined> {
-  const patients = await readAll();
-  const idx = patients.findIndex((p) => p.id === id);
-  if (idx === -1) return undefined;
-  patients[idx] = normalize({
-    ...patients[idx],
-    ...input,
-    updatedAt: new Date().toISOString(),
+  const existing = await prisma.patient.findUnique({ where: { id } });
+  if (!existing) return undefined;
+
+  const row = await prisma.patient.update({
+    where: { id },
+    data: {
+      name: input.name,
+      age: input.age || "",
+      gender: input.gender || "",
+      phone: input.phone.replace(/[\s\-()]/g, ""),
+      email: input.email || "",
+      address: input.address || "",
+      notes: input.notes || "",
+    },
+    include: { consultations: { orderBy: { date: "desc" } }, testReports: { orderBy: { date: "desc" } } },
   });
-  await writeAll(patients);
-  return patients[idx];
+  return dbPatientToType(row);
 }
 
 export async function deletePatient(id: string): Promise<boolean> {
-  const patients = await readAll();
-  const next = patients.filter((p) => p.id !== id);
-  if (next.length === patients.length) return false;
-  await writeAll(next);
-  return true;
+  try {
+    await prisma.patient.delete({ where: { id } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 type RecordData =
   | Omit<HistoryEntry, "id">
   | Omit<Prescription, "id">
-  | Omit<TestReport, "id">;
+  | Omit<TestReport, "id">
+  | Omit<Consultation, "id">;
 
 export async function addRecord(
   patientId: string,
   kind: RecordKind,
   data: RecordData
 ): Promise<boolean> {
-  const patients = await readAll();
-  const idx = patients.findIndex((p) => p.id === patientId);
-  if (idx === -1) return false;
-  const patient = normalize(patients[idx]);
-  const entry = { id: crypto.randomUUID(), ...data };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (patient[kind] as any[]).unshift(entry);
-  patient.updatedAt = new Date().toISOString();
-  patients[idx] = patient;
-  await writeAll(patients);
+  const patient = await prisma.patient.findUnique({ where: { id: patientId } });
+  if (!patient) return false;
+
+  if (kind === "consultations") {
+    const c = data as Omit<Consultation, "id">;
+    await prisma.consultation.create({
+      data: {
+        patientId,
+        date: c.date,
+        chamberId: c.chamberId ?? null,
+        chiefComplaint: c.chiefComplaint ?? [],
+        history: c.history ?? "",
+        onExamination: c.onExamination ?? "",
+        diagnosis: c.diagnosis ?? [],
+        vitalsBp: c.vitals?.bp ?? "",
+        vitalsPulse: c.vitals?.pulse ?? "",
+        vitalsWeight: c.vitals?.weight ?? "",
+        vitalsSpo2: c.vitals?.spo2 ?? "",
+        vitalsTemp: c.vitals?.temperature ?? "",
+        vitalsOthers: c.vitals?.others ?? "",
+        medicines: (c.medicines ?? []) as unknown as object,
+        investigations: c.investigations ?? [],
+        investigationDiscount: c.investigationDiscount ?? 0,
+        advices: c.advices ?? [],
+        followUp: c.followUp ?? "",
+        notes: c.notes ?? "",
+        attachment: c.attachment ?? "",
+        paymentFee: c.payment?.fee ?? 0,
+        paymentReceived: c.payment?.received ?? 0,
+        paymentDiscount: c.payment?.discount ?? 0,
+        paymentStatus: c.payment?.status ?? "unpaid",
+        previousVersionId: c.previousVersionId ?? null,
+        superseded: c.superseded ?? false,
+      },
+    });
+    return true;
+  }
+
+  if (kind === "testReports") {
+    const t = data as Omit<TestReport, "id">;
+    await prisma.testReport.create({
+      data: {
+        patientId,
+        date: t.date,
+        title: t.title,
+        result: t.result ?? "",
+        attachment: t.attachment ?? "",
+      },
+    });
+    return true;
+  }
+
+  // Legacy kinds (visits, history, prescriptions) — no DB table, ignore gracefully
   return true;
 }
 
@@ -267,17 +493,23 @@ export async function deleteRecord(
   kind: RecordKind,
   recordId: string
 ): Promise<boolean> {
-  const patients = await readAll();
-  const idx = patients.findIndex((p) => p.id === patientId);
-  if (idx === -1) return false;
-  const patient = normalize(patients[idx]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  patient[kind] = (patient[kind] as any[]).filter(
-    (r) => r.id !== recordId
-  ) as never;
-  patient.updatedAt = new Date().toISOString();
-  patients[idx] = patient;
-  await writeAll(patients);
+  if (kind === "consultations") {
+    try {
+      await prisma.consultation.delete({ where: { id: recordId } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (kind === "testReports") {
+    try {
+      await prisma.testReport.delete({ where: { id: recordId } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  // Legacy kinds — no-op
   return true;
 }
 
@@ -285,15 +517,13 @@ export async function markConsultationSuperseded(
   patientId: string,
   consultationId: string
 ): Promise<boolean> {
-  const patients = await readAll();
-  const idx = patients.findIndex((p) => p.id === patientId);
-  if (idx === -1) return false;
-  const patient = normalize(patients[idx]);
-  const con = patient.consultations.find((c) => c.id === consultationId);
-  if (!con) return false;
-  con.superseded = true;
-  patient.updatedAt = new Date().toISOString();
-  patients[idx] = patient;
-  await writeAll(patients);
-  return true;
+  try {
+    await prisma.consultation.update({
+      where: { id: consultationId },
+      data: { superseded: true },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

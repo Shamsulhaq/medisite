@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getPosts } from "@/lib/store";
 import { getAppointments, filterAppointments } from "@/lib/appointments";
 import { getPatients } from "@/lib/patients";
+import { getCurrentUser } from "@/lib/rbac";
 import AdminIcon from "@/components/admin/AdminIcon";
 import { Badge } from "@/components/admin/ui";
 
@@ -19,12 +20,14 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default async function DashboardHome() {
-  const [posts, appointments, patients] = await Promise.all([
+  const [posts, appointments, patients, currentUser] = await Promise.all([
     getPosts(),
     getAppointments(),
     getPatients(),
+    getCurrentUser(),
   ]);
 
+  const isDoctor = currentUser?.role === "DOCTOR";
   const todayStr = new Date().toISOString().split("T")[0];
   const todayCount = filterAppointments(appointments, "today").length;
   const upcomingCount = filterAppointments(appointments, "upcoming").length;
@@ -154,6 +157,129 @@ export default async function DashboardHome() {
   }
   pendingFollowups.sort((a, b) => b.daysOverdue - a.daysOverdue);
 
+  // Attendant-specific counts
+  const confirmedToday = todaysAppointments.filter((a) => a.status === "confirmed").length;
+  const pendingToday = todaysAppointments.filter((a) => a.status === "pending").length;
+  const doctorVisitedToday = patients.filter((p) =>
+    p.consultations.some((con) => con.date === todayStr && !con.superseded)
+  ).length;
+  const patientsWithPendingVitals = patients.filter((p) =>
+    p.pendingVitals && p.pendingVitals.bp
+  ).length;
+
+  if (!isDoctor) {
+    // ATTENDANT DASHBOARD
+    return (
+      <div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted">Today&apos;s appointment overview</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                <AdminIcon name="calendar" className="h-5 w-5" />
+              </span>
+            </div>
+            <p className="mt-4 text-3xl font-bold text-ink">{todaysAppointments.length}</p>
+            <p className="mt-1 text-sm text-muted">Total Appointments Today</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600">
+                <AdminIcon name="check" className="h-5 w-5" />
+              </span>
+            </div>
+            <p className="mt-4 text-3xl font-bold text-ink">{confirmedToday}</p>
+            <p className="mt-1 text-sm text-muted">Confirmed</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                <AdminIcon name="clock" className="h-5 w-5" />
+              </span>
+            </div>
+            <p className="mt-4 text-3xl font-bold text-ink">{pendingToday}</p>
+            <p className="mt-1 text-sm text-muted">Pending</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-light text-brand-dark">
+                <AdminIcon name="users" className="h-5 w-5" />
+              </span>
+            </div>
+            <p className="mt-4 text-3xl font-bold text-ink">{doctorVisitedToday}</p>
+            <p className="mt-1 text-sm text-muted">Doctor Visited Today</p>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {/* Today's appointment list */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="font-semibold text-ink">Today&apos;s Appointments</h2>
+              <Link href="/admin/appointments" className="text-sm font-medium text-brand hover:text-brand-dark">View all</Link>
+            </div>
+            {todaysAppointments.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-muted">No appointments today.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {todaysAppointments.slice(0, 10).map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{a.name}</p>
+                      <p className="text-xs text-muted">{a.time} · {a.location || a.mode}</p>
+                    </div>
+                    <Badge tone={STATUS_TONE[a.status] ?? "slate"}>{a.status}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Quick stats */}
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="font-semibold text-ink">Status</h2>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted">Patients with vitals recorded</span>
+                  <span className="font-semibold text-ink">{patientsWithPendingVitals}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Doctor visited today</span>
+                  <span className="font-semibold text-ink">{doctorVisitedToday}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Remaining</span>
+                  <span className="font-semibold text-ink">{todaysAppointments.length - doctorVisitedToday}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="font-semibold text-ink">Quick Actions</h2>
+              <div className="mt-3 space-y-2">
+                <Link href="/admin/appointments" className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-ink transition hover:border-brand hover:text-brand">
+                  <AdminIcon name="calendar" className="h-4 w-4" /> Manage Appointments
+                </Link>
+                <Link href="/admin/patients" className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-ink transition hover:border-brand hover:text-brand">
+                  <AdminIcon name="users" className="h-4 w-4" /> View Patients
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // DOCTOR DASHBOARD (existing)
   return (
     <div>
       <div className="mb-6">

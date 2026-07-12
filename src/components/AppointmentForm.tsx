@@ -312,12 +312,11 @@ export default function AppointmentForm({
 
         <div>
           <label htmlFor="email" className="text-sm font-medium text-ink">
-            {t(UI.email, locale)} <span className="text-red-500">*</span>
+            {t(UI.email, locale)} <span className="text-xs text-muted">(optional)</span>
           </label>
           <input
             id="email"
             type="email"
-            required
             value={form.email}
             onChange={update("email")}
             className={inputClass}

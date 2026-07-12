@@ -44,7 +44,9 @@ export default async function AdminPostsPage() {
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>
                   <th className="px-5 py-3">Title</th>
+                  <th className="px-5 py-3">Category</th>
                   <th className="px-5 py-3">Date</th>
+                  <th className="px-5 py-3">Views</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
@@ -58,10 +60,14 @@ export default async function AdminPostsPage() {
                       </p>
                       <p className="text-xs text-muted">/{post.slug}</p>
                     </td>
+                    <td className="px-5 py-3 text-muted">
+                      {post.category || "—"}
+                    </td>
                     <td className="px-5 py-3 text-muted">{post.date}</td>
+                    <td className="px-5 py-3 text-muted">{post.viewCount}</td>
                     <td className="px-5 py-3">
-                      <Badge tone={post.published ? "green" : "slate"}>
-                        {post.published ? "Published" : "Draft"}
+                      <Badge tone={post.published ? "green" : post.scheduledDate ? "blue" : "slate"}>
+                        {post.published ? "Published" : post.scheduledDate ? "Scheduled" : "Draft"}
                       </Badge>
                     </td>
                     <td className="px-5 py-3">

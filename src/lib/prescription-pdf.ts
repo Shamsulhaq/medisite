@@ -158,6 +158,7 @@ export function generateConsultationHtml(
         ${consultation.vitals.others ? `<span>• ${esc(consultation.vitals.others)}</span>` : ""}
       </div>
       ${diagnoses ? `<div class="section-title">Diagnosis</div><ul>${diagnoses}</ul>` : ""}
+      ${(consultation.investigations?.filter(Boolean).length ?? 0) > 0 ? `<div class="section-title">Investigation</div><ol style="margin:4px 0;padding-left:18px;font-size:13px">${consultation.investigations!.filter(Boolean).map((inv) => `<li>${esc(inv)}</li>`).join("")}</ol>${consultation.investigationDiscount > 0 ? `<p style="margin-top:4px;font-size:12px;color:#0d9488;font-weight:600">↑ ${consultation.investigationDiscount}% discount applicable</p>` : ""}` : ""}
     </div>
 
     <div class="col-right">

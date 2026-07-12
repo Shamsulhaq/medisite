@@ -7,14 +7,25 @@ import { logoutAction } from "@/app/admin/actions";
 import AdminIcon from "@/components/admin/AdminIcon";
 import TopProgressBar from "@/components/admin/TopProgressBar";
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  exact?: boolean;
+  permission?: string; // required permission key
+  roleOnly?: string; // only show for this role
+};
+
+const NAV: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: "grid", exact: true },
-  { href: "/admin/settings", label: "Settings", icon: "settings" },
-  { href: "/admin/medicines", label: "Medicines", icon: "fileText" },
-  { href: "/admin/posts", label: "Blog Posts", icon: "fileText" },
+  { href: "/admin/settings", label: "Settings", icon: "settings", permission: "canManageSettings" },
+  { href: "/admin/medicines", label: "Medicines", icon: "fileText", permission: "canManageMedicines" },
+  { href: "/admin/posts", label: "Blog Posts", icon: "fileText", permission: "canManageBlog" },
   { href: "/admin/appointments", label: "Appointments", icon: "calendar" },
   { href: "/admin/patients", label: "Patient Records", icon: "users" },
-  { href: "/admin/reports", label: "Reports", icon: "grid" },
+  { href: "/admin/reports", label: "Reports", icon: "grid", roleOnly: "DOCTOR" },
+  { href: "/admin/users", label: "Users", icon: "users", roleOnly: "DOCTOR" },
+  { href: "/admin/audit", label: "Audit Log", icon: "fileText", roleOnly: "DOCTOR" },
 ];
 
 function pageTitle(pathname: string): string {
@@ -31,23 +42,33 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/admin/patients/") && pathname !== "/admin/patients") return "Patient";
   if (pathname.startsWith("/admin/patients")) return "Patients";
   if (pathname.startsWith("/admin/reports")) return "Reports";
+  if (pathname.startsWith("/admin/users")) return "Users";
+  if (pathname.startsWith("/admin/audit")) return "Audit Log";
   return "Admin";
 }
 
+type UserPermissions = Record<string, boolean>;
+
 export default function AdminShell({
   username,
+  userRole,
+  permissions,
   children,
 }: {
   username: string;
+  userRole?: string;
+  permissions?: UserPermissions;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sideOpen, setSideOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("sidebar-collapsed") === "1";
-    return false;
-  });
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved === "1") setCollapsed(true);
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; phone: string; patientId: string }[]>([]);
@@ -56,6 +77,13 @@ export default function AdminShell({
   const searchRef = useRef<HTMLDivElement>(null);
   const title = pageTitle(pathname);
   const initials = username.slice(0, 2).toUpperCase();
+
+  // Filter nav items based on permissions
+  const visibleNav = NAV.filter((item) => {
+    if (item.roleOnly && userRole !== item.roleOnly) return false;
+    if (item.permission && permissions && !permissions[item.permission]) return false;
+    return true;
+  });
 
   function toggleCollapse() {
     const next = !collapsed;
@@ -120,7 +148,7 @@ export default function AdminShell({
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-          {NAV.map((item) => {
+          {visibleNav.map((item) => {
             const active = isActive(item.href, item.exact);
             return (
               <Link key={item.href} href={item.href}
@@ -136,7 +164,7 @@ export default function AdminShell({
           })}
         </nav>
 
-        {/* Collapse toggle (desktop, middle of sidebar) */}
+        {/* Collapse toggle (desktop) */}
         <div className="hidden border-t border-white/10 px-2 py-2 lg:block">
           <button
             type="button"
@@ -174,7 +202,16 @@ export default function AdminShell({
           <button type="button" onClick={() => setMenuOpen((v) => !v)}
             className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 active:bg-white/10 ${collapsed ? "lg:justify-center lg:px-0" : ""}`}>
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/20 text-xs font-semibold text-brand-light">{initials}</span>
-            <span className={`flex-1 text-left text-sm font-medium text-white truncate ${collapsed ? "lg:hidden" : ""}`}>{username}</span>
+            <span className={`flex-1 text-left text-sm font-medium text-white truncate ${collapsed ? "lg:hidden" : ""}`}>
+              {username}
+              {userRole && (
+                <span className={`ml-1.5 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  userRole === "DOCTOR" ? "bg-purple-500/20 text-purple-300" : "bg-blue-500/20 text-blue-300"
+                }`}>
+                  {userRole}
+                </span>
+              )}
+            </span>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-4 w-4 text-slate-400 transition ${collapsed ? "lg:hidden" : ""} ${menuOpen ? "rotate-180" : ""}`} aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
           </button>
         </div>

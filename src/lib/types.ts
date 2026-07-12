@@ -143,6 +143,11 @@ export type PrescriptionTemplate = {
   advices: string[];
 };
 
+export type BlogConfig = {
+  categories: string[]; // predefined categories
+  defaultDisclaimer: string; // global medical disclaimer
+};
+
 export type SiteSettings = {
   // Metadata / SEO
   siteTitle: LS;
@@ -192,6 +197,8 @@ export type SiteSettings = {
   email: EmailConfig;
   prescription: PrescriptionConfig;
   prescriptionTemplates: PrescriptionTemplate[];
+  // Blog configuration
+  blog: BlogConfig;
 };
 
 export type BlogPost = {
@@ -206,9 +213,19 @@ export type BlogPost = {
   coverImage?: string;
   published: boolean;
   updatedAt: string; // ISO timestamp
+  category: string;
+  metaTitle: string;
+  metaDescription: string;
+  ogImage: string;
+  reviewedBy: string;
+  reviewedDate: string;
+  references: string;
+  disclaimer: string;
+  scheduledDate: string;
+  viewCount: number;
 };
 
-export type AppointmentStatus = "pending" | "confirmed" | "cancelled";
+export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
 
 export type AppointmentMode = "online" | "offline";
 
@@ -232,7 +249,12 @@ export type AppointmentInput = Omit<
 >;
 
 export type AdminUser = {
+  id: string;
   username: string;
   salt: string;
   hash: string;
+  role: "DOCTOR" | "ATTENDANT";
+  displayName: string;
+  active: boolean;
+  permissions: Record<string, boolean>;
 };
