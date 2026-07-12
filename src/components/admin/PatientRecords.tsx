@@ -138,6 +138,7 @@ export default function PatientRecords({ patient, doctor, prescriptionConfig, pr
             patient={patient}
             doctor={doctor}
             prescriptionConfig={prescriptionConfig}
+            prescriptionTemplates={prescriptionTemplates}
             chambers={chambers}
             appointments={appointments}
             pending={pending}

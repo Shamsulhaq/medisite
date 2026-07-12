@@ -15,13 +15,14 @@ import {
   type RecordKind,
 } from "@/lib/patients";
 import { getAppointments, addAppointment, type AppointmentStatus } from "@/lib/appointments";
+import type { PrescriptionTemplateMedicine } from "@/lib/types";
 import { getSettings, saveSettings } from "@/lib/store";
 import { addCustomMedicine } from "@/lib/custom-medicines";
 import { searchMedicines } from "@/lib/medicines";
 import { requirePermission, checkPermission, getCurrentUser } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { addInvestigation, getInvestigations } from "@/lib/investigations";
-import { todayInBD } from "@/lib/utils";
+import { todayInBD, ageGroupOf } from "@/lib/utils";
 import prisma from "@/lib/db";
 
 async function requireSession() {
@@ -204,6 +205,29 @@ export async function addRecordAction(
         if (patient) {
           const todayStr = todayInBD();
           await completeAppointmentForPatient(patient.phone, todayStr);
+        }
+
+        // Self-learning: remember what was prescribed for the primary diagnosis
+        // AND the patient's age group, so it can be auto-filled next time the
+        // same disease is entered for a similar-age patient.
+        try {
+          const c = data as Record<string, unknown>;
+          const primaryDiagnosis = ((c.diagnosis as string[]) || [])
+            .map((d) => (d || "").trim())
+            .find((d) => d.length > 0);
+          const medicines = ((c.medicines as PrescriptionTemplateMedicine[]) || []);
+          const advices = ((c.advices as string[]) || []);
+          if (primaryDiagnosis && patient) {
+            const { learnPrescriptionTemplate } = await import("@/lib/store");
+            await learnPrescriptionTemplate({
+              diagnosis: primaryDiagnosis,
+              ageGroup: ageGroupOf(patient.age),
+              medicines,
+              advices,
+            });
+          }
+        } catch {
+          // Learning is best-effort; never fail the save because of it.
         }
       }
     }

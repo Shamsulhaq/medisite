@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Patient, Consultation, MedicineEntry, RecordKind } from "@/lib/patients";
-import type { PrescriptionConfig, Chamber, Appointment } from "@/lib/types";
+import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } from "@/lib/types";
 import type { MedicineRef } from "@/lib/medicines";
 import { FREQUENCIES, DURATIONS, FORMS, shortForm } from "@/lib/medicines";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
 import InvestigationAutocomplete from "@/components/admin/InvestigationAutocomplete";
 import { generateConsultationHtml, printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
-import { todayInBD } from "@/lib/utils";
+import { todayInBD, ageGroupOf } from "@/lib/utils";
 import { useToast } from "@/components/admin/ToastProvider";
 import { clearPendingVitalsAction } from "@/app/admin/patient-actions";
 import ButtonSpinner from "@/components/admin/ButtonSpinner";
@@ -236,6 +236,7 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
       <div className="grid gap-2 sm:grid-cols-[1fr_120px_120px]">
         <div className="relative">
           <input ref={inputRef} value={query}
+            data-med-name
             onChange={(e) => handleSearch(e.target.value)}
             onFocus={() => { if (suggestions.length) setShowSugg(true); }}
             onBlur={() => setTimeout(() => setShowSugg(false), 200)}
@@ -304,10 +305,11 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
     </div>
   );
 }
-export default function ConsultationForm({ patient, doctor, prescriptionConfig, chambers, appointments, pending, feeStructure, onSave }: {
+export default function ConsultationForm({ patient, doctor, prescriptionConfig, prescriptionTemplates = [], chambers, appointments, pending, feeStructure, onSave }: {
   patient: Patient;
   doctor: DoctorInfo;
   prescriptionConfig: PrescriptionConfig;
+  prescriptionTemplates?: PrescriptionTemplate[];
   chambers: Chamber[];
   appointments: Appointment[];
   pending: boolean;
@@ -411,6 +413,56 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
   const setComplaint = (i: number, v: string) => setC({ ...c, chiefComplaint: c.chiefComplaint.map((x, idx) => idx === i ? v : x) });
   const setDiagnosis = (i: number, v: string) => setC({ ...c, diagnosis: c.diagnosis.map((x, idx) => idx === i ? v : x) });
 
+  // ---- Disease + age based auto-fill (self-learning templates) -------------
+  // When the prescription is still empty and the doctor enters a diagnosis that
+  // matches a previously-learned template for this patient's AGE GROUP, auto-
+  // fill its medicines + advices. Non-destructive: never overwrites medicines
+  // the doctor has already entered.
+  const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const patientAgeGroup = ageGroupOf(patient.age);
+  const autoFilledKeyRef = useRef<string | null>(null);
+  // Ctrl/Cmd+M adds a medicine row and focuses its input; this flag signals the
+  // focus should happen after the new row renders.
+  const focusNewMedRef = useRef(false);
+
+  useEffect(() => {
+    const prescriptionEmpty = c.medicines.every((m) => !m.name.trim());
+    if (!prescriptionEmpty) return; // don't clobber an in-progress prescription
+
+    const entered = c.diagnosis.map(normKey).filter(Boolean);
+    if (entered.length === 0) return;
+
+    const matches = (t: PrescriptionTemplate) =>
+      t.medicines.length > 0 && entered.includes(normKey(t.diagnosis));
+    // Prefer a template for this exact age group; fall back to an age-agnostic
+    // (legacy) template for the same disease if none exists for the age group.
+    const tpl =
+      prescriptionTemplates.find((t) => matches(t) && (t.ageGroup ?? "") === patientAgeGroup) ||
+      prescriptionTemplates.find((t) => matches(t) && (t.ageGroup ?? "") === "");
+    if (!tpl) return;
+
+    const key = `${normKey(tpl.diagnosis)}|${tpl.ageGroup ?? ""}`;
+    if (autoFilledKeyRef.current === key) return; // already applied
+    autoFilledKeyRef.current = key;
+
+    setC((prev) => ({
+      ...prev,
+      medicines: [...tpl.medicines.map((m) => ({ ...m })), { ...emptyMed }],
+      advices: prev.advices.length ? prev.advices : [...tpl.advices],
+    }));
+    const groupLabel = tpl.ageGroup ? ` · ${tpl.ageGroup}` : "";
+    toast("success", `Auto-filled from learned prescription for "${tpl.diagnosis}"${groupLabel}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.medicines, c.diagnosis, prescriptionTemplates, patientAgeGroup]);
+
+  // Focus the last medicine name input after Ctrl/Cmd+M adds a new row.
+  useEffect(() => {
+    if (!focusNewMedRef.current) return;
+    focusNewMedRef.current = false;
+    const inputs = document.querySelectorAll<HTMLInputElement>("[data-med-name]");
+    inputs[inputs.length - 1]?.focus();
+  }, [c.medicines.length]);
+
   function resetConsultation() {
     setC({
       date: today(),
@@ -506,6 +558,8 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
         }
       } else if (e.key === "m") {
         e.preventDefault();
+        // Add a new medicine row and focus its input (see effect below).
+        focusNewMedRef.current = true;
         setC((prev) => ({ ...prev, medicines: [...prev.medicines, { ...emptyMed }] }));
       }
     }

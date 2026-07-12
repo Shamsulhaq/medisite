@@ -143,6 +143,8 @@ export type PrescriptionTemplateMedicine = {
 export type PrescriptionTemplate = {
   id: string;
   name: string;
+  diagnosis: string; // the disease this template is learned for (match key)
+  ageGroup: string; // patient age band this applies to ("" = any/unknown)
   medicines: PrescriptionTemplateMedicine[];
   advices: string[];
 };

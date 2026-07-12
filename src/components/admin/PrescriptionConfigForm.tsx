@@ -5,6 +5,7 @@ import type { SiteSettings, PrescriptionConfig, PrescriptionTemplate } from "@/l
 import { saveSettingsAction } from "@/app/admin/actions";
 import { Section, TextField, AddButton } from "@/components/admin/fields";
 import InvestigationList from "@/components/admin/InvestigationList";
+import PrescriptionTemplateEditor from "@/components/admin/PrescriptionTemplateEditor";
 
 const TABS = [
   { id: "header", label: "Header" },
@@ -31,6 +32,27 @@ export default function PrescriptionConfigForm({
   const [tab, setTab] = useState<TabId>("header");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [openTemplateId, setOpenTemplateId] = useState<string | null>(null);
+
+  function newTemplateId() {
+    const g = globalThis as { crypto?: { randomUUID?: () => string } };
+    return g.crypto?.randomUUID?.() ?? `tpl-${Math.random().toString(36).slice(2)}`;
+  }
+  function addTemplate() {
+    const id = newTemplateId();
+    setTemplates([
+      ...templates,
+      { id, name: "", diagnosis: "", ageGroup: "", medicines: [], advices: [] },
+    ]);
+    setOpenTemplateId(id);
+  }
+  function updateTemplate(id: string, t: PrescriptionTemplate) {
+    setTemplates(templates.map((x) => (x.id === id ? t : x)));
+  }
+  function removeTemplate(id: string) {
+    setTemplates(templates.filter((x) => x.id !== id));
+    if (openTemplateId === id) setOpenTemplateId(null);
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -194,31 +216,77 @@ export default function PrescriptionConfigForm({
       {/* TEMPLATES */}
       {tab === "templates" && (
         <div className="space-y-6">
-          <Section title="Prescription Templates" description="Pre-saved combinations of medicines and advices. Templates can be loaded quickly when writing a consultation.">
+          <Section
+            title="Prescription Templates"
+            description="Create disease-based templates of medicines + advices. When writing a consultation, entering a matching diagnosis (for the patient's age group) auto-fills these. Templates are also auto-learned from saved consultations."
+          >
+            <div className="mb-2">
+              <AddButton label="New template" onClick={addTemplate} />
+            </div>
+
             {templates.length === 0 && (
-              <p className="text-sm text-muted">No templates saved yet. Save a template from a patient consultation to see it here.</p>
+              <p className="text-sm text-muted">
+                No templates yet. Click &ldquo;New template&rdquo; to create one.
+              </p>
             )}
-            {templates.map((tpl, i) => (
-              <div key={tpl.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{tpl.name}</p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {tpl.medicines.length} medicine{tpl.medicines.length !== 1 ? "s" : ""} · {tpl.advices.length} advice{tpl.advices.length !== 1 ? "s" : ""}
-                    </p>
+
+            {templates.map((tpl) => {
+              const isOpen = openTemplateId === tpl.id;
+              return (
+                <div
+                  key={tpl.id}
+                  className="overflow-hidden rounded-lg border border-slate-200 bg-white"
+                >
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setOpenTemplateId(isOpen ? null : tpl.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                        aria-hidden="true"
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">
+                          {tpl.name || tpl.diagnosis || "Untitled template"}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted">
+                          {tpl.diagnosis || "no diagnosis"} · {tpl.ageGroup || "Any age"} ·{" "}
+                          {tpl.medicines.length} medicine{tpl.medicines.length !== 1 ? "s" : ""}
+                          {" · "}
+                          {tpl.advices.length} advice{tpl.advices.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeTemplate(tpl.id)}
+                      className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                    >
+                      Delete
+                    </button>
                   </div>
-                  <button type="button" onClick={() => setTemplates(templates.filter((_, idx) => idx !== i))}
-                    className="text-xs font-medium text-red-600 hover:underline">Delete</button>
+                  {isOpen && (
+                    <div className="border-t border-slate-100 p-4">
+                      <PrescriptionTemplateEditor
+                        value={tpl}
+                        onChange={(t) => updateTemplate(tpl.id, t)}
+                      />
+                    </div>
+                  )}
                 </div>
-                {tpl.medicines.length > 0 && (
-                  <ul className="mt-2 space-y-0.5 text-xs text-muted">
-                    {tpl.medicines.map((m, mi) => (
-                      <li key={mi}>{m.form} {m.name} {m.dosage} — {m.frequency} {m.duration}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </Section>
         </div>
       )}

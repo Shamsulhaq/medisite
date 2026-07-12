@@ -14,6 +14,8 @@ import type {
   Education,
   Experience,
   MenuItem,
+  PrescriptionTemplate,
+  PrescriptionTemplateMedicine,
 } from "./types";
 import { toLS, isLocale, type LocalizedString } from "./i18n";
 import { defaultSettings, defaultPosts } from "./defaults";
@@ -166,7 +168,9 @@ function normalizeSettings(raw: any): SiteSettings {
     ),
     email: normalizeEmail(s.email),
     prescription: normalizePrescriptionConfig(s.prescription),
-    prescriptionTemplates: Array.isArray(s.prescriptionTemplates) ? s.prescriptionTemplates : [],
+    prescriptionTemplates: Array.isArray(s.prescriptionTemplates)
+      ? (s.prescriptionTemplates as unknown[]).map(normalizePrescriptionTemplate)
+      : [],
     blog: normalizeBlogConfig(s.blog),
   };
 }
@@ -278,6 +282,91 @@ export async function saveSettings(settings: SiteSettings): Promise<void> {
     create: { id: "main", data: normalized as unknown as object },
     update: { data: normalized as unknown as object },
   });
+}
+
+// ---- Disease-based prescription templates (self-learning) ------------------
+
+/** Normalize a stored template, tolerating older records without `diagnosis`. */
+function normalizePrescriptionTemplate(raw: unknown): PrescriptionTemplate {
+  const t = (raw ?? {}) as Record<string, unknown>;
+  const medicines = Array.isArray(t.medicines)
+    ? (t.medicines as unknown[]).map((m) => {
+        const x = (m ?? {}) as Record<string, unknown>;
+        const str = (v: unknown) => (typeof v === "string" ? v : "");
+        return {
+          name: str(x.name),
+          generic: str(x.generic),
+          type: x.type === "generic" ? "generic" : "brand",
+          form: str(x.form),
+          dosage: str(x.dosage),
+          frequency: str(x.frequency),
+          timing: str(x.timing),
+          duration: str(x.duration),
+          specialNote: str(x.specialNote),
+        } as PrescriptionTemplateMedicine;
+      })
+    : [];
+  const name = typeof t.name === "string" ? t.name : "";
+  return {
+    id: typeof t.id === "string" && t.id ? t.id : crypto.randomUUID(),
+    name,
+    // Fall back to the template name for legacy templates saved before the
+    // diagnosis field existed.
+    diagnosis: typeof t.diagnosis === "string" && t.diagnosis ? t.diagnosis : name,
+    ageGroup: typeof t.ageGroup === "string" ? t.ageGroup : "",
+    medicines,
+    advices: Array.isArray(t.advices)
+      ? (t.advices as unknown[]).filter((a): a is string => typeof a === "string")
+      : [],
+  };
+}
+
+/** Normalize a diagnosis string into a stable match key. */
+export function diagnosisKey(diagnosis: string): string {
+  return diagnosis.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Self-learning: remember what the doctor prescribed for a given diagnosis so
+ * it can be auto-filled next time. Upserts (latest prescription wins) a
+ * template keyed by the normalized diagnosis. No-op if there is no diagnosis
+ * or no medicines to learn from.
+ */
+export async function learnPrescriptionTemplate(input: {
+  diagnosis: string;
+  ageGroup?: string;
+  medicines: PrescriptionTemplateMedicine[];
+  advices: string[];
+}): Promise<void> {
+  const diagnosis = input.diagnosis.trim();
+  const ageGroup = (input.ageGroup ?? "").trim();
+  const medicines = (input.medicines || []).filter((m) => m.name?.trim());
+  if (!diagnosis || medicines.length === 0) return; // nothing worth learning
+
+  const dKey = diagnosisKey(diagnosis);
+  const settings = await getSettings();
+  const templates = settings.prescriptionTemplates ?? [];
+
+  const learned: PrescriptionTemplate = {
+    id: crypto.randomUUID(),
+    name: ageGroup ? `${diagnosis} (${ageGroup})` : diagnosis,
+    diagnosis,
+    ageGroup,
+    medicines: medicines.map((m) => ({ ...m })),
+    advices: (input.advices || []).filter((a) => a.trim()),
+  };
+
+  // Key by BOTH diagnosis and age group: same disease at a different age can
+  // have a different prescription, so they are learned separately.
+  const idx = templates.findIndex(
+    (t) => diagnosisKey(t.diagnosis) === dKey && (t.ageGroup ?? "") === ageGroup
+  );
+  const next =
+    idx >= 0
+      ? templates.map((t, i) => (i === idx ? { ...learned, id: t.id } : t))
+      : [...templates, learned];
+
+  await saveSettings({ ...settings, prescriptionTemplates: next });
 }
 
 // ---- Blog posts (PostgreSQL) -----------------------------------------------
