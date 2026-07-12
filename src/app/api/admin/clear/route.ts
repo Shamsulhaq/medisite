@@ -5,7 +5,6 @@
 
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { defaultSettings } from "@/lib/defaults";
@@ -65,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     // Execute clear in a transaction
-    const counts = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const counts = await prisma.$transaction(async (tx) => {
       // Delete in reverse dependency order
       const auditCount = await tx.auditLog.deleteMany();
       const uploadCount = await tx.uploadSession.deleteMany();

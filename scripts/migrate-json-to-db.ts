@@ -1,4 +1,3 @@
-// @ts-nocheck
 // -----------------------------------------------------------------------------
 // Migration script: JSON files → PostgreSQL (Prisma)
 // Run with: npx tsx scripts/migrate-json-to-db.ts
