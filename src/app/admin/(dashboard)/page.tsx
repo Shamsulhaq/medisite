@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { getPosts } from "@/lib/store";
 import { getAppointments, filterAppointments } from "@/lib/appointments";
 import { getPatients } from "@/lib/patients";
 import { getCurrentUser } from "@/lib/rbac";
+import { todayInBD } from "@/lib/utils";
 import AdminIcon from "@/components/admin/AdminIcon";
 import { Badge } from "@/components/admin/ui";
 
@@ -20,19 +20,17 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default async function DashboardHome() {
-  const [posts, appointments, patients, currentUser] = await Promise.all([
-    getPosts(),
+  const [appointments, patients, currentUser] = await Promise.all([
     getAppointments(),
     getPatients(),
     getCurrentUser(),
   ]);
 
   const isDoctor = currentUser?.role === "DOCTOR";
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayInBD();
   const todayCount = filterAppointments(appointments, "today").length;
   const upcomingCount = filterAppointments(appointments, "upcoming").length;
   const pendingCount = appointments.filter((a) => a.status === "pending").length;
-  const publishedCount = posts.filter((p) => p.published).length;
 
   const stats = [
     {
@@ -101,10 +99,6 @@ export default async function DashboardHome() {
       href: "/admin/settings",
     },
   ];
-
-  const recent = [...appointments]
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, 5);
 
   // Today's appointments (for new section)
   const todaysAppointments = appointments

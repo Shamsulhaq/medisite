@@ -21,6 +21,7 @@ import { searchMedicines } from "@/lib/medicines";
 import { requirePermission, checkPermission, getCurrentUser } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { addInvestigation, getInvestigations } from "@/lib/investigations";
+import { todayInBD } from "@/lib/utils";
 import prisma from "@/lib/db";
 
 async function requireSession() {
@@ -185,7 +186,15 @@ export async function addRecordAction(
       const current = await getCurrentUser();
       if (current) {
         const action = kind === "consultations" ? "CREATE_CONSULTATION" : `CREATE_${kind.toUpperCase()}`;
-        await logAudit(current.id, action, kind, patientId, { kind });
+        const conDetails: Record<string, unknown> = { kind, patientId };
+        if (kind === "consultations") {
+          const c = data as Record<string, unknown>;
+          conDetails.date = c.date;
+          conDetails.diagnosis = (c.diagnosis as string[] || []).filter(Boolean).join(", ");
+          conDetails.medicineCount = ((c.medicines as unknown[]) || []).length;
+          conDetails.chiefComplaint = (c.chiefComplaint as string[] || []).filter(Boolean).join(", ");
+        }
+        await logAudit(current.id, action, kind, patientId, conDetails);
       }
       // Auto-complete the appointment when a consultation is saved
       if (kind === "consultations") {
@@ -193,7 +202,7 @@ export async function addRecordAction(
         const { getPatientById } = await import("@/lib/patients");
         const patient = await getPatientById(patientId);
         if (patient) {
-          const todayStr = new Date().toISOString().split("T")[0];
+          const todayStr = todayInBD();
           await completeAppointmentForPatient(patient.phone, todayStr);
         }
       }

@@ -4,6 +4,7 @@
 // -----------------------------------------------------------------------------
 
 import prisma from "@/lib/db";
+import { todayInBD } from "@/lib/utils";
 import type {
   Appointment,
   AppointmentInput,
@@ -97,19 +98,11 @@ export async function deleteAppointment(id: string): Promise<boolean> {
 
 export type AppointmentFilter = "today" | "upcoming" | "past" | "all";
 
-function todayStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export function filterAppointments(
   appointments: Appointment[],
   filter: AppointmentFilter
 ): Appointment[] {
-  const today = todayStr();
+  const today = todayInBD();
   switch (filter) {
     case "today":
       return appointments.filter((a) => a.date === today);

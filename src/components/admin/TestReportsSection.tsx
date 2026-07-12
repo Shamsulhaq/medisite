@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Patient } from "@/lib/patients";
+import { todayInBD } from "@/lib/utils";
 import QRUploadModal from "@/components/admin/QRUploadModal";
 
 const inputClass =
@@ -37,7 +38,7 @@ function AttachmentField({ value, onChange }: { value: string; onChange: (url: s
   );
 }
 
-const today = () => new Date().toISOString().split("T")[0];
+const today = todayInBD;
 
 export default function TestReportsSection({ patient, pending, onAdd, onDelete }: {
   patient: Patient;

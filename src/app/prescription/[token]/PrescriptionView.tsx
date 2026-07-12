@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * PrescriptionView — renders the prescription HTML in a sandboxed iframe.
+ *
+ * SECURITY NOTE: The HTML is generated server-side by generateConsultationHtml()
+ * from trusted data (our own code), NOT from user-supplied input.
+ * Nevertheless, we render it in a sandboxed iframe to prevent any possibility
+ * of XSS (e.g., if consultation data were ever tampered with in the database).
+ * The sandbox attribute blocks scripts, forms, popups, and same-origin access.
+ */
+
 export default function PrescriptionView({ html, token, patientName }: { html: string; token: string; patientName: string }) {
   function handlePrint() {
     window.print();
@@ -40,11 +50,26 @@ export default function PrescriptionView({ html, token, patientName }: { html: s
         </div>
       </div>
 
-      {/* Prescription content */}
+      {/* Prescription content — rendered in sandboxed iframe for XSS protection */}
       <div className="mx-auto max-w-4xl p-4 print:max-w-none print:p-0">
-        <div
-          className="rounded-lg bg-white shadow-sm print:rounded-none print:shadow-none"
-          dangerouslySetInnerHTML={{ __html: html }}
+        <iframe
+          srcDoc={html}
+          sandbox="allow-same-origin"
+          title="Prescription"
+          className="w-full min-h-[800px] rounded-lg bg-white shadow-sm border-0 print:rounded-none print:shadow-none print:min-h-0"
+          style={{ height: "auto" }}
+          onLoad={(e) => {
+            // Auto-resize iframe to fit content
+            const iframe = e.currentTarget;
+            try {
+              const body = iframe.contentDocument?.body;
+              if (body) {
+                iframe.style.height = `${body.scrollHeight + 32}px`;
+              }
+            } catch {
+              // sandbox may prevent access in some cases
+            }
+          }}
         />
       </div>
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { auth } from "@/auth";
 import {
   getMedicineDB,
   importMedicines,
@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 
 // GET → export as JSON or CSV
 export async function GET(request: Request) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") ?? "json";
@@ -34,8 +34,8 @@ export async function GET(request: Request) {
 
 // POST → import JSON or CSV
 export async function POST(request: Request) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const contentType = request.headers.get("content-type") ?? "";
   const modeParam = new URL(request.url).searchParams.get("mode") ?? "merge";

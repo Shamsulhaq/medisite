@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchInvestigations, addInvestigation } from "@/lib/investigations";
-import { getSession } from "@/lib/auth";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,8 +13,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await request.json();
     await addInvestigation({ name: body.name, category: body.category || "", aliases: body.aliases || [] });

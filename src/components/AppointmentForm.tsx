@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { t, UI, type Locale } from "@/lib/i18n";
 import type { AppointmentConfig, AppointmentMode } from "@/lib/types";
 import { generateSlotsForDate, isHoliday, weekdayName } from "@/lib/availability";
+import { todayInBD } from "@/lib/utils";
 
 type Status =
   | { state: "idle" }
@@ -43,7 +44,7 @@ export default function AppointmentForm({
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState<Status>({ state: "idle" });
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayInBD();
 
   const selectedAvailability = useMemo(() => {
     if (mode === "online") return appointment.online.availability;

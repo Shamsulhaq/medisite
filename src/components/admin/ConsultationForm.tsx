@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Patient, Consultation, MedicineEntry, RecordKind } from "@/lib/patients";
-import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } from "@/lib/types";
+import type { PrescriptionConfig, Chamber, Appointment } from "@/lib/types";
 import type { MedicineRef } from "@/lib/medicines";
 import { FREQUENCIES, DURATIONS, FORMS, shortForm } from "@/lib/medicines";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
 import InvestigationAutocomplete from "@/components/admin/InvestigationAutocomplete";
 import { generateConsultationHtml, printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
+import { todayInBD } from "@/lib/utils";
 import { useToast } from "@/components/admin/ToastProvider";
 import { clearPendingVitalsAction } from "@/app/admin/patient-actions";
 import ButtonSpinner from "@/components/admin/ButtonSpinner";
@@ -15,7 +16,7 @@ import QRUploadModal from "@/components/admin/QRUploadModal";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
-const today = () => new Date().toISOString().split("T")[0];
+const today = todayInBD;
 
 function AttachmentField({ value, onChange }: { value: string; onChange: (url: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -99,15 +100,6 @@ function MedicineInput({ entry, onChange, onRemove, index, onAdviceAdd }: {
   }
 
   // Find the best inline suggestion (first brand that starts with query)
-  function getInlineSuggestion(q: string): { med: MedicineRef; name: string; type: "generic" | "brand" } | null {
-    if (!q) return null;
-    const ql = q.toLowerCase();
-    for (const item of flatItems) {
-      if (item.name.toLowerCase().startsWith(ql)) return item;
-    }
-    return null;
-  }
-
   function handleSearch(v: string) {
     userTypingRef.current = true;
     inlineSuggestionRef.current = null;

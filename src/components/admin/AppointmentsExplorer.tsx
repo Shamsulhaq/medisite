@@ -3,15 +3,13 @@
 import { useMemo, useState } from "react";
 import type { Appointment, Availability } from "@/lib/types";
 import { downloadCSV, downloadExcel, openPrintPDF } from "@/lib/export";
+import { todayInBD } from "@/lib/utils";
 import AppointmentsManager from "@/components/admin/AppointmentsManager";
 
 type RangeMode = "all" | "today" | "upcoming" | "past" | "custom";
 
 function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+  return todayInBD();
 }
 
 const control =
@@ -101,7 +99,7 @@ export default function AppointmentsExplorer({
       new Date(a.createdAt).toLocaleString(),
     ]);
 
-  const stamp = new Date().toISOString().split("T")[0];
+  const stamp = todayStr();
 
   return (
     <div>

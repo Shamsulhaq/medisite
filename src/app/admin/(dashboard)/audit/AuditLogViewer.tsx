@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 type AuditLog = {
   id: string;
@@ -19,6 +20,110 @@ type UserInfo = {
   username: string;
   displayName: string;
 };
+
+const ACTION_COLORS: Record<string, string> = {
+  CREATE_PATIENT: "bg-green-100 text-green-700",
+  UPDATE_PATIENT: "bg-blue-100 text-blue-700",
+  DELETE_PATIENT: "bg-red-100 text-red-700",
+  CREATE_CONSULTATION: "bg-green-100 text-green-700",
+  DELETE_CONSULTATIONS: "bg-red-100 text-red-700",
+  SAVE_PENDING_VITALS: "bg-amber-100 text-amber-700",
+  CLEAR_PENDING_VITALS: "bg-slate-100 text-slate-700",
+  RESCHEDULE_APPOINTMENT: "bg-blue-100 text-blue-700",
+  UPDATE_SETTINGS: "bg-purple-100 text-purple-700",
+  CREATE_POST: "bg-green-100 text-green-700",
+  UPDATE_POST: "bg-blue-100 text-blue-700",
+  DELETE_POST: "bg-red-100 text-red-700",
+};
+
+function getEntityLink(entity: string, entityId: string | null): string | null {
+  if (!entityId) return null;
+  if (entity === "patient") return `/admin/patients/${entityId}`;
+  if (entity === "consultations") return null; // consultations don't have their own page
+  if (entity === "appointment") return `/admin/appointments`;
+  if (entity === "post") return `/admin/posts/${entityId}`;
+  return null;
+}
+
+function formatDetailValue(key: string, value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function AuditRow({ log }: { log: AuditLog }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails = log.details && Object.keys(log.details).length > 0;
+  const entityLink = getEntityLink(log.entity, log.entityId);
+  const actionColor = ACTION_COLORS[log.action] ?? "bg-slate-100 text-slate-700";
+
+  return (
+    <>
+      <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <td className="whitespace-nowrap px-4 py-3 text-muted">
+          {new Date(log.createdAt).toLocaleString()}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-ink">{log.userName}</span>
+            <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+              log.userRole === "DOCTOR" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+            }`}>
+              {log.userRole}
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-3">
+          <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${actionColor}`}>
+            {log.action.replace(/_/g, " ")}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-muted">
+          <span className="capitalize">{log.entity}</span>
+          {entityLink ? (
+            <Link href={entityLink} onClick={(e) => e.stopPropagation()} className="ml-1 text-xs text-brand hover:underline">
+              View →
+            </Link>
+          ) : log.entityId ? (
+            <span className="ml-1 text-xs opacity-60">({log.entityId.slice(0, 8)}…)</span>
+          ) : null}
+        </td>
+        <td className="px-4 py-3 text-xs text-muted">
+          {hasDetails ? (
+            <button className="text-brand hover:underline" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
+              {expanded ? "Hide details" : "View details"}
+            </button>
+          ) : "—"}
+        </td>
+      </tr>
+      {expanded && hasDetails && (
+        <tr className="bg-slate-50">
+          <td colSpan={5} className="px-6 py-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <p className="mb-2 text-xs font-semibold uppercase text-muted">Audit Details</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {Object.entries(log.details!).map(([key, value]) => (
+                  <div key={key} className="rounded-md bg-slate-50 px-3 py-2">
+                    <p className="text-xs font-medium text-muted capitalize">{key.replace(/([A-Z])/g, " $1").replace(/_/g, " ")}</p>
+                    <p className="mt-0.5 text-sm text-ink break-all whitespace-pre-wrap">{formatDetailValue(key, value)}</p>
+                  </div>
+                ))}
+              </div>
+              {log.entityId && (
+                <p className="mt-3 text-xs text-muted">
+                  Entity ID: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px]">{log.entityId}</code>
+                  {entityLink && (
+                    <Link href={entityLink} className="ml-2 text-brand hover:underline">Open record →</Link>
+                  )}
+                </p>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export default function AuditLogViewer({
   initialLogs,
@@ -128,33 +233,7 @@ export default function AuditLogViewer({
                 </tr>
               ) : (
                 filtered.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap px-4 py-3 text-muted">
-                      {new Date(log.createdAt).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-ink">{log.userName}</span>
-                        <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                          log.userRole === "DOCTOR" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-                        }`}>
-                          {log.userRole}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-ink">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted">
-                      {log.entity}
-                      {log.entityId && <span className="ml-1 text-xs opacity-60">({log.entityId.slice(0, 8)}…)</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted max-w-[200px] truncate">
-                      {log.details ? JSON.stringify(log.details) : "—"}
-                    </td>
-                  </tr>
+                  <AuditRow key={log.id} log={log} />
                 ))
               )}
             </tbody>

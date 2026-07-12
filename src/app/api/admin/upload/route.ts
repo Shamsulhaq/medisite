@@ -1,3 +1,12 @@
+// -----------------------------------------------------------------------------
+// File upload route — context-aware secure vs public storage.
+//
+// - Patient attachments (context=patient): saved to data/secure-uploads/
+//   and served via /api/admin/files/<filename> (auth required).
+// - Public assets (doctor photos, blog covers): saved to public/uploads/
+//   and served directly via /uploads/<filename>.
+// -----------------------------------------------------------------------------
+
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
@@ -7,7 +16,8 @@ import { auth } from "@/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+const PUBLIC_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+const SECURE_UPLOAD_DIR = path.join(process.cwd(), "data", "secure-uploads");
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 
 // Allowed types: images for photos/covers/inline, plus PDF for test reports.
@@ -58,12 +68,18 @@ export async function POST(request: Request) {
     );
   }
 
+  // Determine storage context from the form field
+  // context=patient → secure storage; anything else → public
+  const context = String(form.get("context") ?? "public").trim().toLowerCase();
+  const isSecure = context === "patient";
+
   const bytes = Buffer.from(await file.arrayBuffer());
   const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+  const targetDir = isSecure ? SECURE_UPLOAD_DIR : PUBLIC_UPLOAD_DIR;
 
   try {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
-    await fs.writeFile(path.join(UPLOAD_DIR, name), bytes);
+    await fs.mkdir(targetDir, { recursive: true });
+    await fs.writeFile(path.join(targetDir, name), bytes);
   } catch (err) {
     console.error("Upload failed:", err);
     return NextResponse.json(
@@ -72,6 +88,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const url = `/uploads/${name}`;
-  return NextResponse.json({ ok: true, url, type: file.type }, { status: 201 });
+  // Secure files are served via authenticated API route; public files via static path
+  const url = isSecure ? `/api/admin/files/${name}` : `/uploads/${name}`;
+  return NextResponse.json({ ok: true, url, type: file.type, secure: isSecure }, { status: 201 });
 }

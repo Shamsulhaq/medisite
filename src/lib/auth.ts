@@ -1,13 +1,12 @@
 // -----------------------------------------------------------------------------
 // Authentication module — uses PostgreSQL via Prisma for multi-user support.
 //   - Passwords hashed with scrypt (Node crypto).
-//   - Sessions are stateless, signed cookies (HMAC-SHA256 over {user, exp}).
+//   - Session management handled by NextAuth (see src/auth.ts).
 //   - Supports DOCTOR and ATTENDANT roles with fine-grained permissions.
 // This runs only on the Node.js runtime (server components / actions / routes).
 // -----------------------------------------------------------------------------
 
 import crypto from "crypto";
-import { cookies } from "next/headers";
 import prisma from "@/lib/db";
 import type { UserRole } from "@prisma/client";
 
@@ -40,9 +39,6 @@ export type AdminUser = {
   active: boolean;
   permissions: UserPermissions;
 };
-
-export const SESSION_COOKIE = "dm_session";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days (seconds)
 
 // ---- Default permissions per role ------------------------------------------
 
@@ -85,13 +81,6 @@ export function getDefaultPermissions(role: UserRole): UserPermissions {
 }
 
 // ---- Password hashing ------------------------------------------------------
-
-function authSecret(): string {
-  return (
-    process.env.AUTH_SECRET ||
-    "insecure-dev-secret-change-me-in-env-local-please"
-  );
-}
 
 export function hashPassword(
   password: string,
@@ -328,73 +317,4 @@ export async function updatePassword(password: string): Promise<void> {
   await prisma.user.update({ where: { id: user.id }, data: { salt, hash } });
 }
 
-// ---- Session tokens --------------------------------------------------------
 
-function sign(payload: string): string {
-  return crypto
-    .createHmac("sha256", authSecret())
-    .update(payload)
-    .digest("base64url");
-}
-
-export function createSessionToken(username: string): string {
-  const exp = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE;
-  const payload = Buffer.from(
-    JSON.stringify({ u: username, exp })
-  ).toString("base64url");
-  return `${payload}.${sign(payload)}`;
-}
-
-export function verifySessionToken(token: string): { username: string } | null {
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  const [payload, sig] = parts;
-  const expected = sign(payload);
-  const sigBuf = Buffer.from(sig);
-  const expBuf = Buffer.from(expected);
-  if (
-    sigBuf.length !== expBuf.length ||
-    !crypto.timingSafeEqual(sigBuf, expBuf)
-  ) {
-    return null;
-  }
-  try {
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    if (typeof data.exp !== "number" || data.exp < Date.now() / 1000) {
-      return null;
-    }
-    return { username: String(data.u) };
-  } catch {
-    return null;
-  }
-}
-
-// ---- Cookie helpers --------------------------------------------------------
-
-export async function createSession(username: string): Promise<void> {
-  const token = createSessionToken(username);
-  const store = await cookies();
-  store.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
-}
-
-export async function destroySession(): Promise<void> {
-  const store = await cookies();
-  store.delete(SESSION_COOKIE);
-}
-
-export async function getSession(): Promise<{ username: string } | null> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
-}
-
-export async function isAuthenticated(): Promise<boolean> {
-  return (await getSession()) !== null;
-}
