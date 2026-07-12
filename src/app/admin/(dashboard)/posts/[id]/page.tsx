@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPostById } from "@/lib/store";
+import { getPostById, getSettings } from "@/lib/store";
 import PostEditor from "@/components/admin/PostEditor";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export default async function EditPostPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const post = await getPostById(id);
+  const [post, settings] = await Promise.all([getPostById(id), getSettings()]);
 
   if (!post) {
     notFound();
@@ -32,7 +32,7 @@ export default async function EditPostPage({
       </Link>
       <h1 className="mt-3 text-2xl font-bold text-ink">Edit Post</h1>
       <div className="mt-6">
-        <PostEditor post={post} />
+        <PostEditor post={post} settings={settings} />
       </div>
     </div>
   );

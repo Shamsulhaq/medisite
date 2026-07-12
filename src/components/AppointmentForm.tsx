@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { t, UI, type Locale } from "@/lib/i18n";
 import type { AppointmentConfig, AppointmentMode } from "@/lib/types";
 import { generateSlotsForDate, isHoliday, weekdayName } from "@/lib/availability";
+import { todayInBD } from "@/lib/utils";
 
 type Status =
   | { state: "idle" }
@@ -43,7 +44,7 @@ export default function AppointmentForm({
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState<Status>({ state: "idle" });
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayInBD();
 
   const selectedAvailability = useMemo(() => {
     if (mode === "online") return appointment.online.availability;
@@ -63,6 +64,22 @@ export default function AppointmentForm({
     form.date && selectedAvailability
       ? isHoliday(selectedAvailability, form.date)
       : false;
+
+  const [bookedCounts, setBookedCounts] = useState<Record<string, number>>({});
+  const maxPerSlot = selectedAvailability?.maxPerSlot ?? 10;
+
+  const location = useMemo(() => {
+    if (mode === "online") return "Online";
+    return appointment.chambers.find((c) => c.id === chamberId)?.name ?? "";
+  }, [mode, chamberId, appointment]);
+
+  useEffect(() => {
+    if (!form.date || !location) { setBookedCounts({}); return; }
+    fetch(`/api/appointments?date=${form.date}&location=${encodeURIComponent(location)}`)
+      .then((r) => r.json())
+      .then((d) => setBookedCounts(d.counts ?? {}))
+      .catch(() => setBookedCounts({}));
+  }, [form.date, location]);
 
   const update =
     (field: keyof typeof form) =>
@@ -296,12 +313,11 @@ export default function AppointmentForm({
 
         <div>
           <label htmlFor="email" className="text-sm font-medium text-ink">
-            {t(UI.email, locale)} <span className="text-red-500">*</span>
+            {t(UI.email, locale)} <span className="text-xs text-muted">(optional)</span>
           </label>
           <input
             id="email"
             type="email"
-            required
             value={form.email}
             onChange={update("email")}
             className={inputClass}
@@ -365,11 +381,14 @@ export default function AppointmentForm({
                   ? "Not available"
                   : t(UI.selectTimeSlot, locale)}
             </option>
-            {slots.map((slot) => (
-              <option key={slot} value={slot}>
-                {slot}
-              </option>
-            ))}
+            {slots.map((slot) => {
+              const full = (bookedCounts[slot] ?? 0) >= maxPerSlot;
+              return (
+                <option key={slot} value={slot} disabled={full}>
+                  {slot}{full ? " (Full)" : ""}
+                </option>
+              );
+            })}
           </select>
         </div>
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
-import { getSession } from "@/lib/auth";
+import { auth } from "@/auth";
 import { getSettings } from "@/lib/store";
 import { getPatientById } from "@/lib/patients";
 import { generateConsultationHtml, type DoctorInfo } from "@/lib/prescription-pdf";
@@ -10,8 +10,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const session = await getSession();
-  if (!session) {
+  const session = await auth();
+  if (!session?.user) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 

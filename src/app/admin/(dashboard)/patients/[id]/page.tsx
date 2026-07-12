@@ -3,10 +3,15 @@ import { notFound } from "next/navigation";
 import { getPatientById } from "@/lib/patients";
 import { getSettings } from "@/lib/store";
 import { getAppointments } from "@/lib/appointments";
+import { getCurrentUser } from "@/lib/rbac";
 import { t } from "@/lib/i18n";
 import PatientForm from "@/components/admin/PatientForm";
 import PatientRecords from "@/components/admin/PatientRecords";
 import DeletePatientButton from "@/components/admin/DeletePatientButton";
+import VitalsTrendChart from "@/components/admin/VitalsTrendChart";
+import CompareConsultations from "@/components/admin/CompareConsultations";
+import PatientPageTabs from "@/components/admin/PatientPageTabs";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +26,11 @@ export default async function PatientDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [patient, settings, appointments] = await Promise.all([
+  const [patient, settings, appointments, currentUser] = await Promise.all([
     getPatientById(id),
     getSettings(),
     getAppointments(),
+    getCurrentUser(),
   ]);
 
   if (!patient) {
@@ -45,7 +51,8 @@ export default async function PatientDetailPage({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Back link + actions */}
       <div className="flex items-center justify-between">
         <Link
           href="/admin/patients"
@@ -53,37 +60,88 @@ export default async function PatientDetailPage({
         >
           ← Back to patients
         </Link>
-        <DeletePatientButton id={patient.id} name={patient.name} />
-      </div>
-
-      <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-ink">{patient.name}</h1>
-          <span className="rounded-full bg-brand-light px-2.5 py-0.5 text-xs font-semibold text-brand-dark">
-            {patient.patientId}
+          {currentUser?.role === "DOCTOR" && <DeletePatientButton id={patient.id} name={patient.name} />}
+        </div>
+      </div>
+
+      {/* Compact patient header — always visible */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <h1 className="text-lg font-bold text-ink">{patient.name}</h1>
+        <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs font-semibold text-brand-dark">
+          {patient.patientId}
+        </span>
+        {(patient.age || patient.gender) && (
+          <span className="text-sm text-muted">
+            {patient.age && `${patient.age}`}
+            {patient.age && patient.gender && " / "}
+            {patient.gender && patient.gender}
           </span>
-        </div>
-        <p className="mt-1 text-sm text-muted">
-          {patient.phone} · Added{" "}
-          {new Date(patient.createdAt).toLocaleDateString()} · Updated{" "}
-          {new Date(patient.updatedAt).toLocaleDateString()}
-        </p>
+        )}
+        <span className="text-sm text-muted">{patient.phone}</span>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-ink">Patient Details</h2>
-        <div className="mt-4">
-          <PatientForm patient={patient} />
-        </div>
-      </div>
-
-      <PatientRecords
-        patient={patient}
-        doctor={doctorInfo}
-        prescriptionConfig={settings.prescription}
-        chambers={settings.appointment.chambers}
-        appointments={appointments}
-      />
+      {/* Tabs */}
+      <Suspense fallback={null}>
+        <PatientPageTabs
+          consultationsContent={
+            <PatientRecords
+              patient={patient}
+              doctor={doctorInfo}
+              prescriptionConfig={settings.prescription}
+              prescriptionTemplates={settings.prescriptionTemplates}
+              chambers={settings.appointment.chambers}
+              appointments={appointments}
+              feeStructure={settings.feeStructure}
+              permissions={currentUser?.permissions}
+            />
+          }
+          testReportsContent={
+            <TestReportsTab
+              patient={patient}
+              permissions={currentUser?.permissions}
+            />
+          }
+          vitalsContent={
+            <div className="space-y-6">
+              {patient.consultations.length >= 2 ? (
+                <>
+                  <VitalsTrendChart consultations={patient.consultations} />
+                  <CompareConsultations consultations={patient.consultations} />
+                </>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+                  <p className="text-sm text-muted">Need at least 2 consultations with vitals to show trends.</p>
+                </div>
+              )}
+            </div>
+          }
+          detailsContent={
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-ink">Patient Details</h2>
+              <div className="mt-4">
+                <PatientForm patient={patient} />
+              </div>
+            </div>
+          }
+        />
+      </Suspense>
     </div>
+  );
+}
+
+// Extracted test reports tab that reuses PatientRecords' TestReportsSection
+function TestReportsTab({ patient, permissions }: { patient: Parameters<typeof PatientRecords>[0]["patient"]; permissions?: Record<string, boolean> }) {
+  return (
+    <PatientRecords
+      patient={patient}
+      doctor={{ name: "", nameBn: "", title: "", titleBn: "", department: "", departmentBn: "", hospital: "", hospitalBn: "", phone: "", email: "" }}
+      prescriptionConfig={{ predefinedAdvices: [], followUpOptions: [], timingOptions: [], predefinedDiagnoses: [] } as never}
+      prescriptionTemplates={[]}
+      chambers={[]}
+      appointments={[]}
+      permissions={permissions}
+      testReportsOnly
+    />
   );
 }

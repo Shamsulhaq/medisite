@@ -6,13 +6,12 @@
 
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { verifyCredentials, getUser } from "@/lib/auth";
+import { verifyCredentials, getUserByUsername } from "@/lib/auth";
 import authConfig from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
 
-  // Override the Credentials provider to add the authorize function.
   providers: [
     Credentials({
       name: "Admin Login",
@@ -29,10 +28,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const valid = await verifyCredentials(username, password);
         if (!valid) return null;
 
-        const user = await getUser();
+        const user = await getUserByUsername(username);
+        if (!user) return null;
+
         return {
-          id: user.username,
+          id: user.id,
           name: user.username,
+          email: user.role, // piggyback role in email field for session
         };
       },
     }),

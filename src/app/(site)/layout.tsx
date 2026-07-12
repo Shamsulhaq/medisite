@@ -4,9 +4,6 @@ import { getSettings } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 
-// Public content is editable at runtime, so always render fresh from the store.
-export const dynamic = "force-dynamic";
-
 export default async function SiteLayout({
   children,
 }: {

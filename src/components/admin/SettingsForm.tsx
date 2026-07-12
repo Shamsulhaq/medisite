@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/fields";
 import { LocalizedField, LocalizedArea } from "@/components/admin/LocalizedField";
 import ImageUpload from "@/components/admin/ImageUpload";
+import ButtonSpinner from "@/components/admin/ButtonSpinner";
 
 const ICON_OPTIONS = [
   { value: "stethoscope", label: "Stethoscope" },
@@ -34,6 +35,7 @@ const TABS = [
   { id: "navigation", label: "Navigation" },
   { id: "lists", label: "Lists" },
   { id: "email", label: "Email" },
+  { id: "payment", label: "Payment" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -777,6 +779,51 @@ export default function SettingsForm({ initial }: { initial: SiteSettings }) {
         </div>
       )}
 
+      {/* PAYMENT */}
+      {tab === "payment" && (
+        <div className="space-y-6">
+          <Section
+            title="Fee Structure"
+            description="Configure consultation fees based on visit frequency. These will be auto-suggested when creating a consultation."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="First Visit (৳)"
+                value={String(s.feeStructure.firstVisit)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, firstVisit: Number(v) || 0 })
+                }
+                placeholder="500"
+              />
+              <TextField
+                label="Within 7 Days (৳)"
+                value={String(s.feeStructure.within7Days)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, within7Days: Number(v) || 0 })
+                }
+                placeholder="300"
+              />
+              <TextField
+                label="Within 30 Days (৳)"
+                value={String(s.feeStructure.within30Days)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, within30Days: Number(v) || 0 })
+                }
+                placeholder="200"
+              />
+              <TextField
+                label="After 30 Days (৳)"
+                value={String(s.feeStructure.after30Days)}
+                onChange={(v) =>
+                  setTop("feeStructure", { ...s.feeStructure, after30Days: Number(v) || 0 })
+                }
+                placeholder="500"
+              />
+            </div>
+          </Section>
+        </div>
+      )}
+
       {/* Sticky save bar */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur md:left-64">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -800,9 +847,10 @@ export default function SettingsForm({ initial }: { initial: SiteSettings }) {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save Settings"}
+            {saving && <ButtonSpinner />}
+            {saving ? "Saving…" : "Save Settings"}
           </button>
         </div>
       </div>

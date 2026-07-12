@@ -1,84 +1,115 @@
 // -----------------------------------------------------------------------------
-// Medicine database — stored in data/medicines.json.
+// Medicine database — backed by PostgreSQL via Prisma.
 // Supports CRUD, JSON/CSV import/export, and fast prefix search.
-// The built-in seed list (src/lib/medicines.ts) is used as a fallback only
-// when data/medicines.json doesn't exist.
+// Maintains the same external API as the previous JSON-file-based version.
 // -----------------------------------------------------------------------------
 
-import { promises as fs } from "fs";
-import path from "path";
+import prisma from "@/lib/db";
 import type { MedicineRef } from "./medicines";
 import { MEDICINES as BUILT_IN } from "./medicines";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const FILE = path.join(DATA_DIR, "medicines.json");
+// ---- Helpers ---------------------------------------------------------------
 
-export async function getMedicineDB(): Promise<MedicineRef[]> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    const raw = await fs.readFile(FILE, "utf8");
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : BUILT_IN;
-  } catch {
-    // Seed from built-in + custom
-    const custom = await loadCustom();
-    const merged = [...BUILT_IN, ...custom];
-    await fs.writeFile(FILE, JSON.stringify(merged, null, 2), "utf8");
-    return merged;
-  }
+function dbRowToRef(row: {
+  generic: string;
+  brands: string[];
+  forms: string[];
+  dosages: string[];
+  defaultAdvice: string;
+}): MedicineRef {
+  return {
+    generic: row.generic,
+    brands: row.brands,
+    forms: row.forms,
+    dosages: row.dosages,
+    defaultAdvice: row.defaultAdvice || undefined,
+  };
 }
 
-async function loadCustom(): Promise<MedicineRef[]> {
-  try {
-    const raw = await fs.readFile(
-      path.join(DATA_DIR, "custom-medicines.json"),
-      "utf8"
-    );
-    return JSON.parse(raw) ?? [];
-  } catch {
-    return [];
+// ---- Public API ------------------------------------------------------------
+
+export async function getMedicineDB(): Promise<MedicineRef[]> {
+  const count = await prisma.medicine.count();
+  if (count === 0) {
+    // Seed from built-in database on first run
+    for (const med of BUILT_IN) {
+      await prisma.medicine.create({
+        data: {
+          generic: med.generic,
+          brands: med.brands,
+          forms: med.forms,
+          dosages: med.dosages,
+          defaultAdvice: med.defaultAdvice ?? "",
+        },
+      });
+    }
+    return [...BUILT_IN];
   }
+  const rows = await prisma.medicine.findMany({ orderBy: { generic: "asc" } });
+  return rows.map(dbRowToRef);
 }
 
 export async function saveMedicineDB(medicines: MedicineRef[]): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(medicines, null, 2), "utf8");
+  // Replace entire medicine DB — transaction for consistency
+  await prisma.$transaction(async (tx) => {
+    await tx.medicine.deleteMany();
+    for (const med of medicines) {
+      await tx.medicine.create({
+        data: {
+          generic: med.generic,
+          brands: med.brands,
+          forms: med.forms,
+          dosages: med.dosages,
+          defaultAdvice: med.defaultAdvice ?? "",
+        },
+      });
+    }
+  });
 }
 
 export async function addMedicine(med: MedicineRef): Promise<void> {
-  const db = await getMedicineDB();
-  // Avoid duplicate generics
-  const existing = db.find(
-    (m) => m.generic.toLowerCase() === med.generic.toLowerCase()
-  );
+  const existing = await prisma.medicine.findFirst({
+    where: { generic: { equals: med.generic, mode: "insensitive" } },
+  });
+
   if (existing) {
-    // Merge brands
+    // Merge brands, forms, dosages
     const newBrands = med.brands.filter(
       (b) => !existing.brands.some((eb) => eb.toLowerCase() === b.toLowerCase())
     );
-    existing.brands.push(...newBrands);
     const newForms = med.forms.filter(
       (f) => !existing.forms.some((ef) => ef.toLowerCase() === f.toLowerCase())
     );
-    existing.forms.push(...newForms);
     const newDosages = med.dosages.filter(
-      (d) =>
-        !existing.dosages.some((ed) => ed.toLowerCase() === d.toLowerCase())
+      (d) => !existing.dosages.some((ed) => ed.toLowerCase() === d.toLowerCase())
     );
-    existing.dosages.push(...newDosages);
+    await prisma.medicine.update({
+      where: { id: existing.id },
+      data: {
+        brands: [...existing.brands, ...newBrands],
+        forms: [...existing.forms, ...newForms],
+        dosages: [...existing.dosages, ...newDosages],
+      },
+    });
   } else {
-    db.push(med);
+    await prisma.medicine.create({
+      data: {
+        generic: med.generic,
+        brands: med.brands,
+        forms: med.forms,
+        dosages: med.dosages,
+        defaultAdvice: med.defaultAdvice ?? "",
+      },
+    });
   }
-  await saveMedicineDB(db);
 }
 
 export async function removeMedicine(generic: string): Promise<boolean> {
-  const db = await getMedicineDB();
-  const next = db.filter(
-    (m) => m.generic.toLowerCase() !== generic.toLowerCase()
-  );
-  if (next.length === db.length) return false;
-  await saveMedicineDB(next);
+  const existing = await prisma.medicine.findFirst({
+    where: { generic: { equals: generic, mode: "insensitive" } },
+  });
+  if (!existing) return false;
+  await prisma.medicine.delete({ where: { id: existing.id } });
   return true;
 }
 
@@ -90,37 +121,46 @@ export async function importMedicines(
     await saveMedicineDB(medicines);
     return medicines.length;
   }
-  // Merge
-  const db = await getMedicineDB();
+
+  // Merge mode
   let added = 0;
   for (const med of medicines) {
-    const existing = db.find(
-      (m) => m.generic.toLowerCase() === med.generic.toLowerCase()
-    );
+    const existing = await prisma.medicine.findFirst({
+      where: { generic: { equals: med.generic, mode: "insensitive" } },
+    });
     if (existing) {
-      med.brands.forEach((b) => {
-        if (!existing.brands.some((eb) => eb.toLowerCase() === b.toLowerCase())) {
-          existing.brands.push(b);
-        }
-      });
-      med.forms.forEach((f) => {
-        if (!existing.forms.some((ef) => ef.toLowerCase() === f.toLowerCase())) {
-          existing.forms.push(f);
-        }
-      });
-      med.dosages.forEach((d) => {
-        if (
-          !existing.dosages.some((ed) => ed.toLowerCase() === d.toLowerCase())
-        ) {
-          existing.dosages.push(d);
-        }
-      });
+      const newBrands = med.brands.filter(
+        (b) => !existing.brands.some((eb) => eb.toLowerCase() === b.toLowerCase())
+      );
+      const newForms = med.forms.filter(
+        (f) => !existing.forms.some((ef) => ef.toLowerCase() === f.toLowerCase())
+      );
+      const newDosages = med.dosages.filter(
+        (d) => !existing.dosages.some((ed) => ed.toLowerCase() === d.toLowerCase())
+      );
+      if (newBrands.length || newForms.length || newDosages.length) {
+        await prisma.medicine.update({
+          where: { id: existing.id },
+          data: {
+            brands: [...existing.brands, ...newBrands],
+            forms: [...existing.forms, ...newForms],
+            dosages: [...existing.dosages, ...newDosages],
+          },
+        });
+      }
     } else {
-      db.push(med);
+      await prisma.medicine.create({
+        data: {
+          generic: med.generic,
+          brands: med.brands,
+          forms: med.forms,
+          dosages: med.dosages,
+          defaultAdvice: med.defaultAdvice ?? "",
+        },
+      });
       added++;
     }
   }
-  await saveMedicineDB(db);
   return added;
 }
 
@@ -139,7 +179,6 @@ export function searchMedicineDB(
 
   for (const m of db) {
     if (prefix.length + contains.length >= limit * 2) break;
-    // Check generic
     const gl = m.generic.toLowerCase();
     if (gl.startsWith(q)) {
       prefix.push(m);
@@ -149,7 +188,6 @@ export function searchMedicineDB(
       contains.push(m);
       continue;
     }
-    // Check brands
     let matched = false;
     for (const b of m.brands) {
       const bl = b.toLowerCase();
@@ -176,7 +214,6 @@ export function searchMedicineDB(
 export function parseMedicineCSV(csv: string): MedicineRef[] {
   const lines = csv.split(/\r?\n/).filter((l) => l.trim());
   const result: MedicineRef[] = [];
-  // Skip header if it looks like one
   const start = /^generic/i.test(lines[0] ?? "") ? 1 : 0;
 
   for (let i = start; i < lines.length; i++) {

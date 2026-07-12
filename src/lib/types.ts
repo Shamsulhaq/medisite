@@ -34,6 +34,7 @@ export type TimeRange = { start: string; end: string }; // "HH:MM" 24-hour
 export type DayAvailability = { enabled: boolean; ranges: TimeRange[] };
 export type Availability = {
   slotMinutes: number; // length of each appointment slot
+  maxPerSlot: number; // max patients per slot (default 10)
   week: DayAvailability[]; // 7 entries, index 0 = Sunday … 6 = Saturday
   holidays: string[]; // specific off-days, "YYYY-MM-DD"
 };
@@ -86,6 +87,7 @@ export type PrescriptionConfig = {
   };
   // Pre-configured items
   predefinedAdvices: string[];
+  predefinedDiagnoses: string[];
   timingOptions: string[];
   followUpOptions: string[];
 };
@@ -122,6 +124,30 @@ export type Messages = {
   footerDisclaimer: LS;
 };
 
+export type PrescriptionTemplateMedicine = {
+  name: string;
+  generic: string;
+  type: "generic" | "brand";
+  form: string;
+  dosage: string;
+  frequency: string;
+  timing: string;
+  duration: string;
+  specialNote: string;
+};
+
+export type PrescriptionTemplate = {
+  id: string;
+  name: string;
+  medicines: PrescriptionTemplateMedicine[];
+  advices: string[];
+};
+
+export type BlogConfig = {
+  categories: string[]; // predefined categories
+  defaultDisclaimer: string; // global medical disclaimer
+};
+
 export type SiteSettings = {
   // Metadata / SEO
   siteTitle: LS;
@@ -133,6 +159,13 @@ export type SiteSettings = {
   // Language + features
   defaultLanguage: Locale;
   appointmentsEnabled: boolean;
+  // Fee structure
+  feeStructure: {
+    firstVisit: number;
+    within7Days: number;
+    within30Days: number;
+    after30Days: number;
+  };
   // Doctor profile
   doctor: {
     name: LS;
@@ -163,6 +196,9 @@ export type SiteSettings = {
   appointment: AppointmentConfig;
   email: EmailConfig;
   prescription: PrescriptionConfig;
+  prescriptionTemplates: PrescriptionTemplate[];
+  // Blog configuration
+  blog: BlogConfig;
 };
 
 export type BlogPost = {
@@ -177,9 +213,19 @@ export type BlogPost = {
   coverImage?: string;
   published: boolean;
   updatedAt: string; // ISO timestamp
+  category: string;
+  metaTitle: string;
+  metaDescription: string;
+  ogImage: string;
+  reviewedBy: string;
+  reviewedDate: string;
+  references: string;
+  disclaimer: string;
+  scheduledDate: string;
+  viewCount: number;
 };
 
-export type AppointmentStatus = "pending" | "confirmed" | "cancelled";
+export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
 
 export type AppointmentMode = "online" | "offline";
 
@@ -203,7 +249,12 @@ export type AppointmentInput = Omit<
 >;
 
 export type AdminUser = {
+  id: string;
   username: string;
   salt: string;
   hash: string;
+  role: "DOCTOR" | "ATTENDANT";
+  displayName: string;
+  active: boolean;
+  permissions: Record<string, boolean>;
 };

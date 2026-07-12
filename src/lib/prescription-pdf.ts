@@ -1,5 +1,6 @@
 import type { Patient, Consultation } from "@/lib/patients";
 import type { PrescriptionConfig } from "@/lib/types";
+import { shortForm } from "@/lib/medicines";
 
 export type DoctorInfo = {
   name: string;
@@ -27,13 +28,13 @@ export function generateConsultationHtml(
 ): string {
   const meds = consultation.medicines
     .map((m, i) => {
-      const line = `${i + 1}. ${esc(m.form)} ${esc(m.name)} ${esc(m.dosage)}`;
+      const line = `${i + 1}. ${esc(shortForm(m.form))} ${esc(m.name)} ${esc(m.dosage)}`;
       const details = [m.frequency, m.timing, m.duration, m.specialNote]
         .filter(Boolean)
         .map(esc)
         .join(" ---- ");
-      return `<p style="margin:0 0 2px"><strong>${line}</strong></p>
-              <p style="margin:0 0 10px;color:#475569;font-size:12px;padding-left:16px">${details}</p>`;
+      return `<div class="med-row"><p style="margin:0 0 2px"><strong>${line}</strong></p>
+              <p style="margin:0 0 10px;color:#475569;font-size:12px;padding-left:16px">${details}</p></div>`;
     })
     .join("");
 
@@ -94,9 +95,29 @@ export function generateConsultationHtml(
   li { margin-bottom: 2px; }
   .rx-symbol { font-size: 22px; font-weight: bold; color: #0d9488; margin: 0 0 8px; }
   .vitals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; font-size: 12px; }
-  .footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #64748b; }
+  .footer { padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #64748b; }
+  .signature { text-align: right; margin-top: 40px; }
+  .signature .line { border-top: 1px solid #0f172a; display: inline-block; width: 160px; margin-bottom: 4px; }
+  @media print {
+    body { margin: 0; padding: 0; }
+    .page { padding: 15mm 20mm; position: relative; min-height: calc(100vh - 30mm); }
+    .footer { position: fixed; bottom: 10mm; left: 20mm; right: 20mm; }
+  }
   .signature { text-align: right; margin-top: 24px; }
   .signature .line { border-top: 1px solid #0f172a; display: inline-block; width: 160px; margin-bottom: 4px; }
+  .med-row { page-break-inside: avoid; }
+  .medicines-block { page-break-inside: avoid; }
+  .medicines-block.allow-break { page-break-inside: auto; }
+  .advices-block { page-break-before: auto; }
+  @media print {
+    @page { size: A4; margin: 15mm 20mm; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { padding: 0; max-width: none; }
+    .med-row { page-break-inside: avoid; }
+    .medicines-block { page-break-inside: avoid; }
+    .medicines-block.allow-break { page-break-inside: auto; }
+    .advices-block { page-break-before: auto; }
+  }
 </style>
 </head>
 <body>
@@ -137,12 +158,15 @@ export function generateConsultationHtml(
         ${consultation.vitals.others ? `<span>• ${esc(consultation.vitals.others)}</span>` : ""}
       </div>
       ${diagnoses ? `<div class="section-title">Diagnosis</div><ul>${diagnoses}</ul>` : ""}
+      ${(consultation.investigations?.filter(Boolean).length ?? 0) > 0 ? `<div class="section-title">Investigation</div><ol style="margin:4px 0;padding-left:18px;font-size:13px">${consultation.investigations!.filter(Boolean).map((inv) => `<li>${esc(inv)}</li>`).join("")}</ol>${consultation.investigationDiscount > 0 ? `<p style="margin-top:4px;font-size:12px;color:#0d9488;font-weight:600">↑ ${consultation.investigationDiscount}% discount applicable</p>` : ""}` : ""}
     </div>
 
     <div class="col-right">
       <div class="rx-symbol">Rx,</div>
+      <div class="medicines-block${consultation.medicines.length > 8 ? " allow-break" : ""}">
       ${meds}
-      ${advices ? `<div class="section-title">Advices</div>${advices}` : ""}
+      </div>
+      ${advices ? `<div class="advices-block"><div class="section-title">Advices</div>${advices}</div>` : ""}
       ${consultation.followUp ? `<div class="section-title">Follow-up</div><p>${esc(consultation.followUp)}</p>` : ""}
       ${consultation.notes ? `<div class="section-title">Notes</div><p>${esc(consultation.notes)}</p>` : ""}
     </div>
@@ -158,6 +182,7 @@ export function generateConsultationHtml(
     <span>${esc(footerLeft)}</span>
     <span>${esc(footerCenter)}</span>
     <span>${esc(footerRight)}</span>
+    ${consultation.publicToken ? `<div style="text-align:right;margin-top:8px"><img src="data:image/svg+xml;base64,${consultation._qrSvgBase64 || ""}" alt="QR" style="width:70px;height:70px;display:inline-block" /><p style="font-size:9px;color:#64748b;margin:2px 0 0">Scan for digital copy</p></div>` : ""}
   </div>
 </div>
 </body>

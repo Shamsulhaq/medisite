@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAppointments } from "@/lib/appointments";
 import { getSettings } from "@/lib/store";
+import { getCurrentUser } from "@/lib/rbac";
 import AppointmentsExplorer from "@/components/admin/AppointmentsExplorer";
 import AdminIcon from "@/components/admin/AdminIcon";
 
@@ -12,11 +13,13 @@ export const metadata = {
 };
 
 export default async function AdminAppointmentsPage() {
-  const [appointments, settings] = await Promise.all([
+  const [appointments, settings, currentUser] = await Promise.all([
     getAppointments(),
     getSettings(),
+    getCurrentUser(),
   ]);
   const chamberNames = settings.appointment.chambers.map((c) => c.name);
+  const defaultAvailability = settings.appointment.chambers[0]?.availability;
 
   return (
     <div>
@@ -27,7 +30,14 @@ export default async function AdminAppointmentsPage() {
           <AdminIcon name="settings" className="h-4 w-4" /> Configuration
         </Link>
       </div>
-      <AppointmentsExplorer appointments={appointments} chambers={chamberNames} />
+      <AppointmentsExplorer
+        appointments={appointments}
+        chambers={chamberNames}
+        availability={defaultAvailability}
+        userId={currentUser?.id}
+        userName={currentUser?.displayName || currentUser?.username}
+        isDoctor={currentUser?.role === "DOCTOR"}
+      />
     </div>
   );
 }

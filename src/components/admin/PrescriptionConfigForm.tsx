@@ -1,16 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import type { SiteSettings, PrescriptionConfig } from "@/lib/types";
+import type { SiteSettings, PrescriptionConfig, PrescriptionTemplate } from "@/lib/types";
 import { saveSettingsAction } from "@/app/admin/actions";
 import { Section, TextField, AddButton } from "@/components/admin/fields";
+import InvestigationList from "@/components/admin/InvestigationList";
 
 const TABS = [
   { id: "header", label: "Header" },
   { id: "footer", label: "Footer" },
   { id: "advices", label: "Advices" },
+  { id: "diagnoses", label: "Diagnoses" },
+  { id: "investigations", label: "Investigations" },
   { id: "timing", label: "Timing" },
   { id: "followup", label: "Follow-up" },
+  { id: "templates", label: "Templates" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -23,6 +27,7 @@ export default function PrescriptionConfigForm({
   initial: SiteSettings;
 }) {
   const [p, setP] = useState<PrescriptionConfig>(initial.prescription);
+  const [templates, setTemplates] = useState<PrescriptionTemplate[]>(initial.prescriptionTemplates ?? []);
   const [tab, setTab] = useState<TabId>("header");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -30,19 +35,19 @@ export default function PrescriptionConfigForm({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true); setMsg(null);
-    const res = await saveSettingsAction({ ...initial, prescription: p });
+    const res = await saveSettingsAction({ ...initial, prescription: p, prescriptionTemplates: templates });
     setSaving(false);
     setMsg(res.ok ? { type: "ok", text: "Prescription configuration saved." } : { type: "err", text: res.error ?? "Failed." });
     if (res.ok) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function editList(key: "predefinedAdvices" | "timingOptions" | "followUpOptions", i: number, v: string) {
+  function editList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions", i: number, v: string) {
     setP({ ...p, [key]: p[key].map((x, idx) => (idx === i ? v : x)) });
   }
-  function removeFromList(key: "predefinedAdvices" | "timingOptions" | "followUpOptions", i: number) {
+  function removeFromList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions", i: number) {
     setP({ ...p, [key]: p[key].filter((_, idx) => idx !== i) });
   }
-  function addToList(key: "predefinedAdvices" | "timingOptions" | "followUpOptions") {
+  function addToList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions") {
     setP({ ...p, [key]: [...p[key], ""] });
   }
   function editHeaderLine(side: "leftLines" | "rightLines" | "contactLines", i: number, v: string) {
@@ -131,6 +136,31 @@ export default function PrescriptionConfigForm({
         </div>
       )}
 
+      {/* DIAGNOSES */}
+      {tab === "diagnoses" && (
+        <div className="space-y-6">
+          <Section title="Pre-defined Diagnoses" description="Common diagnoses that auto-suggest when the doctor types. These grow automatically as new diagnoses are entered.">
+            {p.predefinedDiagnoses.map((dx, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-muted w-6">{i + 1}.</span>
+                <input value={dx} onChange={(e) => editList("predefinedDiagnoses", i, e.target.value)} className={inputClass} />
+                <button type="button" onClick={() => removeFromList("predefinedDiagnoses", i)} className="text-xs text-red-600 hover:underline">✕</button>
+              </div>
+            ))}
+            <AddButton label="Add diagnosis" onClick={() => addToList("predefinedDiagnoses")} />
+          </Section>
+        </div>
+      )}
+
+      {/* INVESTIGATIONS */}
+      {tab === "investigations" && (
+        <div className="space-y-6">
+          <Section title="Investigations" description="Common tests/investigations available for autocomplete when writing prescriptions. New ones added during consultations are auto-saved here.">
+            <InvestigationList />
+          </Section>
+        </div>
+      )}
+
       {/* TIMING */}
       {tab === "timing" && (
         <div className="space-y-6">
@@ -157,6 +187,38 @@ export default function PrescriptionConfigForm({
               </div>
             ))}
             <AddButton label="Add follow-up option" onClick={() => addToList("followUpOptions")} />
+          </Section>
+        </div>
+      )}
+
+      {/* TEMPLATES */}
+      {tab === "templates" && (
+        <div className="space-y-6">
+          <Section title="Prescription Templates" description="Pre-saved combinations of medicines and advices. Templates can be loaded quickly when writing a consultation.">
+            {templates.length === 0 && (
+              <p className="text-sm text-muted">No templates saved yet. Save a template from a patient consultation to see it here.</p>
+            )}
+            {templates.map((tpl, i) => (
+              <div key={tpl.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{tpl.name}</p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {tpl.medicines.length} medicine{tpl.medicines.length !== 1 ? "s" : ""} · {tpl.advices.length} advice{tpl.advices.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setTemplates(templates.filter((_, idx) => idx !== i))}
+                    className="text-xs font-medium text-red-600 hover:underline">Delete</button>
+                </div>
+                {tpl.medicines.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-xs text-muted">
+                    {tpl.medicines.map((m, mi) => (
+                      <li key={mi}>{m.form} {m.name} {m.dosage} — {m.frequency} {m.duration}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </Section>
         </div>
       )}

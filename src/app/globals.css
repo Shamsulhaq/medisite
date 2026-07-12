@@ -11,6 +11,18 @@
   --color-ink: #0f172a; /* slate-900 */
   --color-muted: #475569; /* slate-600 */
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --animate-slide-down: slide-down 0.3s ease-out;
+}
+
+@keyframes slide-down {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 :root {
@@ -46,4 +58,11 @@ body {
 .prose-content p {
   margin-bottom: 1.1rem;
   line-height: 1.8;
+}
+
+/* Sticky save bar: full width on tablet/mobile */
+@media (max-width: 1024px) {
+  .sticky-save {
+    left: 0 !important;
+  }
 }

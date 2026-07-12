@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getSettings } from "@/lib/store";
 import PostEditor from "@/components/admin/PostEditor";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +9,9 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function NewPostPage() {
+export default async function NewPostPage() {
+  const settings = await getSettings();
+
   return (
     <div>
       <Link
@@ -19,7 +22,7 @@ export default function NewPostPage() {
       </Link>
       <h1 className="mt-3 text-2xl font-bold text-ink">New Post</h1>
       <div className="mt-6">
-        <PostEditor />
+        <PostEditor settings={settings} />
       </div>
     </div>
   );
