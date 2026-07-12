@@ -59,16 +59,14 @@ export default async function AdminAppointmentsPage({
           {result.total} request{result.total === 1 ? "" : "s"}
         </p>
         <div className="flex items-center gap-2">
-          <NewAppointmentModal
-            chambers={chamberNames}
-            onlineEnabled={settings.appointment.online.enabled}
-          />
+          <NewAppointmentModal appointment={settings.appointment} />
         </div>
       </div>
       <AppointmentsExplorer
         appointments={result.items}
         chambers={chamberNames}
         availability={defaultAvailability}
+        appointment={settings.appointment}
         userId={currentUser?.id}
         userName={currentUser?.displayName || currentUser?.username}
         isDoctor={currentUser?.role === "DOCTOR"}

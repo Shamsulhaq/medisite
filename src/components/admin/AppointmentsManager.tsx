@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Appointment, AppointmentStatus, Availability } from "@/lib/types";
+import type { Appointment, AppointmentStatus, Availability, AppointmentConfig } from "@/lib/types";
 import {
   setAppointmentStatusAction,
   deleteAppointmentAction,
@@ -10,7 +10,9 @@ import {
 import { createPatientAction } from "@/app/admin/patient-actions";
 import { findPatientByPhoneAction } from "@/app/admin/patient-actions";
 import { savePendingVitalsAction, rescheduleAppointmentAction } from "@/app/admin/patient-actions";
-import { generateSlotsForDate } from "@/lib/availability";
+import SlotPicker, { useSlotAvailability } from "@/components/SlotPicker";
+import { availabilityForLocation } from "@/lib/availability";
+
 import { useToast } from "@/components/admin/ToastProvider";
 import ButtonSpinner from "@/components/admin/ButtonSpinner";
 
@@ -148,12 +150,14 @@ function QuickPatientModal({
 export default function AppointmentsManager({
   appointments,
   availability,
+  appointment,
   userId,
   userName,
   isDoctor,
 }: {
   appointments: Appointment[];
   availability?: Availability;
+  appointment?: AppointmentConfig;
   userId?: string;
   userName?: string;
   isDoctor?: boolean;
@@ -167,9 +171,18 @@ export default function AppointmentsManager({
   const [printingPhone, setPrintingPhone] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const rescheduleSlots = rescheduleDate && availability
-    ? generateSlotsForDate(availability, rescheduleDate)
-    : [];
+  const reschedulingAppt = appointments.find((a) => a.id === rescheduleId);
+  // Use the schedule of THIS appointment's chamber (or online), so reschedule
+  // shows the same slots that chamber offers. Fall back to the default.
+  const rescheduleAvailability =
+    (appointment && reschedulingAppt
+      ? availabilityForLocation(appointment, reschedulingAppt.location)
+      : undefined) ?? availability;
+  const rescheduleSlot = useSlotAvailability(
+    rescheduleAvailability,
+    rescheduleDate,
+    reschedulingAppt?.location ?? ""
+  );
 
   async function handlePrintPrescription(phone: string) {
     setPrintingPhone(phone);
@@ -457,17 +470,13 @@ export default function AppointmentsManager({
                         onChange={(e) => { setRescheduleDate(e.target.value); setRescheduleTime(""); }}
                         className="rounded-lg border border-slate-300 px-2 py-1 text-xs outline-none focus:border-brand"
                       />
-                      <select
+                      <SlotPicker
+                        state={rescheduleSlot}
                         value={rescheduleTime}
-                        onChange={(e) => setRescheduleTime(e.target.value)}
-                        disabled={rescheduleSlots.length === 0}
+                        onChange={setRescheduleTime}
+                        showNotes={false}
                         className="rounded-lg border border-slate-300 px-2 py-1 text-xs outline-none focus:border-brand disabled:opacity-50"
-                      >
-                        <option value="">{rescheduleSlots.length === 0 ? "Pick date first" : "Select time"}</option>
-                        {rescheduleSlots.map((slot) => (
-                          <option key={slot} value={slot}>{slot}</option>
-                        ))}
-                      </select>
+                      />
                       <button
                         type="button"
                         onClick={() => handleReschedule(a.id)}

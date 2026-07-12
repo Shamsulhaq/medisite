@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { Appointment, Availability } from "@/lib/types";
+import type { Appointment, Availability, AppointmentConfig } from "@/lib/types";
 import type { AppointmentsQuery } from "@/lib/appointments";
 import { downloadCSV, downloadExcel, openPrintPDF } from "@/lib/export";
 import { todayInBD } from "@/lib/utils";
@@ -31,6 +31,7 @@ export default function AppointmentsExplorer({
   appointments,
   chambers,
   availability,
+  appointment,
   userId,
   userName,
   isDoctor,
@@ -44,6 +45,7 @@ export default function AppointmentsExplorer({
   appointments: Appointment[];
   chambers: string[];
   availability?: Availability;
+  appointment?: AppointmentConfig;
   userId?: string;
   userName?: string;
   isDoctor?: boolean;
@@ -272,7 +274,7 @@ export default function AppointmentsExplorer({
         </div>
       </div>
 
-      <AppointmentsManager appointments={appointments} availability={availability} userId={userId} userName={userName} isDoctor={isDoctor} />
+      <AppointmentsManager appointments={appointments} availability={availability} appointment={appointment} userId={userId} userName={userName} isDoctor={isDoctor} />
 
       <Pagination page={page} totalPages={totalPages} total={total} perPage={perPage} />
     </div>

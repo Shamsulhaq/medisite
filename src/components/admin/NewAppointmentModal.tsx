@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/admin/ToastProvider";
 import { createAppointmentAction } from "@/app/admin/patient-actions";
+import type { AppointmentConfig } from "@/lib/types";
+import SlotPicker, { useSlotAvailability } from "@/components/SlotPicker";
 
 const control =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
@@ -17,16 +19,17 @@ interface PatientHit {
 }
 
 export default function NewAppointmentModal({
-  chambers,
-  onlineEnabled,
+  appointment,
 }: {
-  chambers: string[];
-  onlineEnabled: boolean;
+  appointment: AppointmentConfig;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const chambers = appointment.chambers;
+  const onlineEnabled = appointment.online.enabled;
 
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
@@ -34,12 +37,20 @@ export default function NewAppointmentModal({
     phone: "",
     email: "",
     mode: "offline" as "offline" | "online",
-    location: chambers[0] ?? "",
+    location: chambers[0]?.name ?? "",
     date: today,
     time: "",
     status: "confirmed" as "confirmed" | "pending",
     reason: "",
   });
+
+  // Shared slot availability — identical to the public booking form.
+  const selectedAvailability =
+    form.mode === "online"
+      ? appointment.online.availability
+      : chambers.find((c) => c.name === form.location)?.availability;
+  const slotLocation = form.mode === "online" ? "Online" : form.location;
+  const slot = useSlotAvailability(selectedAvailability, form.date, slotLocation);
 
   // Patient search prefill
   const [patientQuery, setPatientQuery] = useState("");
@@ -47,8 +58,13 @@ export default function NewAppointmentModal({
   const [showHits, setShowHits] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clear the chosen time whenever the slot context (date/chamber/mode) changes.
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      if (k === "date" || k === "location" || k === "mode") next.time = "";
+      return next;
+    });
 
   useEffect(() => {
     if (!patientQuery.trim()) {
@@ -84,7 +100,7 @@ export default function NewAppointmentModal({
       phone: "",
       email: "",
       mode: "offline",
-      location: chambers[0] ?? "",
+      location: chambers[0]?.name ?? "",
       date: today,
       time: "",
       status: "confirmed",
@@ -235,8 +251,8 @@ export default function NewAppointmentModal({
                     className={control}
                   >
                     {chambers.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                      <option key={c.id} value={c.name}>
+                        {c.name}
                       </option>
                     ))}
                   </select>
@@ -266,12 +282,11 @@ export default function NewAppointmentModal({
               </label>
               <label className={label}>
                 <span>Time *</span>
-                <input
-                  type="text"
-                  placeholder="e.g. 06:30 PM"
+                <SlotPicker
+                  state={slot}
                   value={form.time}
-                  onChange={(e) => set("time", e.target.value)}
-                  className={control}
+                  onChange={(v) => set("time", v)}
+                  className={`${control} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
                 />
               </label>
 

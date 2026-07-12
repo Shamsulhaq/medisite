@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { t, UI, type Locale } from "@/lib/i18n";
 import type { AppointmentConfig, AppointmentMode } from "@/lib/types";
-import { generateSlotsForDate, isHoliday, weekdayName, dayMaxPatients } from "@/lib/availability";
+import { generateSlotsForDate, weekdayName } from "@/lib/availability";
+import SlotPicker, { useSlotAvailability } from "@/components/SlotPicker";
 import { todayInBD } from "@/lib/utils";
 
 type Status =
@@ -51,43 +52,13 @@ export default function AppointmentForm({
     return appointment.chambers.find((c) => c.id === chamberId)?.availability;
   }, [mode, chamberId, appointment]);
 
-  const slots = useMemo(
-    () =>
-      form.date && selectedAvailability
-        ? generateSlotsForDate(selectedAvailability, form.date)
-        : [],
-    [form.date, selectedAvailability]
-  );
-
-  const dayClosed = form.date !== "" && slots.length === 0;
-  const isHol =
-    form.date && selectedAvailability
-      ? isHoliday(selectedAvailability, form.date)
-      : false;
-
-  const [bookedCounts, setBookedCounts] = useState<Record<string, number>>({});
-  const maxPerSlot = selectedAvailability?.maxPerSlot ?? 10;
-
-  // Per-day capacity: total booked for the day+location vs the weekday's cap.
-  const dayMax =
-    form.date && selectedAvailability
-      ? dayMaxPatients(selectedAvailability, form.date)
-      : 0;
-  const dayTotal = Object.values(bookedCounts).reduce((sum, n) => sum + n, 0);
-  const dayFull = dayMax > 0 && dayTotal >= dayMax;
-
   const location = useMemo(() => {
     if (mode === "online") return "Online";
     return appointment.chambers.find((c) => c.id === chamberId)?.name ?? "";
   }, [mode, chamberId, appointment]);
 
-  useEffect(() => {
-    if (!form.date || !location) { setBookedCounts({}); return; }
-    fetch(`/api/appointments?date=${form.date}&location=${encodeURIComponent(location)}`)
-      .then((r) => r.json())
-      .then((d) => setBookedCounts(d.counts ?? {}))
-      .catch(() => setBookedCounts({}));
-  }, [form.date, location]);
+  // Shared slot availability (same source of truth as the admin side).
+  const slot = useSlotAvailability(selectedAvailability, form.date, location);
 
   const update =
     (field: keyof typeof form) =>
@@ -374,52 +345,15 @@ export default function AppointmentForm({
             {t(UI.preferredTime, locale)}{" "}
             <span className="text-red-500">*</span>
           </label>
-          <select
-            id="time"
-            required
+          <SlotPicker
+            state={slot}
             value={form.time}
-            onChange={update("time")}
-            disabled={!form.date || dayClosed || dayFull}
+            onChange={(v) => setForm((f) => ({ ...f, time: v }))}
+            id="time"
             className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
-          >
-            <option value="">
-              {!form.date
-                ? "Select a date first"
-                : dayClosed
-                  ? "Not available"
-                  : dayFull
-                    ? "Fully booked for this day"
-                    : t(UI.selectTimeSlot, locale)}
-            </option>
-            {slots.map((slot) => {
-              const full = dayFull || (bookedCounts[slot] ?? 0) >= maxPerSlot;
-              return (
-                <option key={slot} value={slot} disabled={full}>
-                  {slot}{full ? " (Full)" : ""}
-                </option>
-              );
-            })}
-          </select>
-          {form.date && !dayClosed && dayMax > 0 && (
-            <p className="mt-1 text-xs text-muted">
-              {Math.max(0, dayMax - dayTotal)} of {dayMax} slots left for this day
-            </p>
-          )}
+            selectTimeLabel={t(UI.selectTimeSlot, locale)}
+          />
         </div>
-
-        {dayClosed && (
-          <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
-            {isHol
-              ? "Closed on this date (holiday). Please choose another day."
-              : "Not available on this day for the selected option. Please choose another day."}
-          </div>
-        )}
-
-        {!dayClosed && dayFull && (
-          <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
-            This day is fully booked ({dayMax} patients). Please choose another day.
-          </div>
-        )}
 
         <div className="sm:col-span-2">
           <label htmlFor="reason" className="text-sm font-medium text-ink">
@@ -439,7 +373,7 @@ export default function AppointmentForm({
 
       <button
         type="submit"
-        disabled={status.state === "submitting" || dayClosed || dayFull || !form.time}
+        disabled={status.state === "submitting" || slot.dayClosed || slot.dayFull || !form.time}
         className="mt-6 w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
       >
         {status.state === "submitting"

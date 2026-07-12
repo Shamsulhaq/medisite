@@ -130,6 +130,20 @@ export function dayMaxPatients(
 }
 
 /**
+ * Resolve the schedule that applies to a stored appointment `location`
+ * ("Online" or a chamber name). Used so reschedule/edit show the SAME slots as
+ * that appointment's chamber, not a default.
+ */
+export function availabilityForLocation(
+  config: AppointmentConfig,
+  location: string
+): Availability | undefined {
+  if (!location) return undefined;
+  if (location.trim().toLowerCase() === "online") return config.online.availability;
+  return config.chambers.find((c) => c.name === location)?.availability;
+}
+
+/**
  * Generate bookable slot labels (e.g. "02:00 PM") for a given date, based on the
  * weekday schedule and holidays. Returns [] when the day is closed.
  */
