@@ -31,19 +31,43 @@ export async function POST(request: Request) {
   }
 
   if (!file.name.endsWith(".zip")) {
-    return NextResponse.json({ ok: false, error: "File must be a .zip archive" }, { status: 400 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "The selected file is not a .zip archive. Upload the backup exactly as downloaded — on macOS the browser may auto-extract it, so use the .zip file itself, not the unzipped folder.",
+      },
+      { status: 400 }
+    );
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  let patientsData: any[] = [];
+  let appointmentsData: any[] = [];
+  let blogPostsData: any[] = [];
+  let blogRevisionsData: any[] = [];
+  let settingsData: any[] = [];
+  let usersData: any[] = [];
+  let medicinesData: any[] = [];
+  let investigationsData: any[] = [];
+  let auditLogsData: any[] = [];
+  let uploadSessionsData: any[] = [];
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  // --- Phase 1: read & validate the ZIP (file-format problems → 400) --------
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const zip = new AdmZip(buffer);
-    const entries = zip.getEntries();
+    const zip = new AdmZip(buffer); // throws if the bytes are not a real ZIP
+    const entryNames = zip.getEntries().map((e) => e.entryName);
 
     // Validate ZIP structure
-    const entryNames = entries.map((e) => e.entryName);
     if (!entryNames.includes("metadata.json")) {
       return NextResponse.json(
-        { ok: false, error: "Invalid backup file: missing metadata.json" },
+        {
+          ok: false,
+          error:
+            'This ZIP is not a MediSite backup — metadata.json is missing. Upload a file created by the "Download Backup" button.',
+        },
         { status: 400 }
       );
     }
@@ -57,18 +81,31 @@ export async function POST(request: Request) {
     };
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const patientsData = parseEntry<any>("patients.json");
-    const appointmentsData = parseEntry<any>("appointments.json");
-    const blogPostsData = parseEntry<any>("blog_posts.json");
-    const blogRevisionsData = parseEntry<any>("blog_revisions.json");
-    const settingsData = parseEntry<any>("settings.json");
-    const usersData = parseEntry<any>("users.json");
-    const medicinesData = parseEntry<any>("medicines.json");
-    const investigationsData = parseEntry<any>("investigations.json");
-    const auditLogsData = parseEntry<any>("audit_logs.json");
-    const uploadSessionsData = parseEntry<any>("upload_sessions.json");
+    patientsData = parseEntry<any>("patients.json");
+    appointmentsData = parseEntry<any>("appointments.json");
+    blogPostsData = parseEntry<any>("blog_posts.json");
+    blogRevisionsData = parseEntry<any>("blog_revisions.json");
+    settingsData = parseEntry<any>("settings.json");
+    usersData = parseEntry<any>("users.json");
+    medicinesData = parseEntry<any>("medicines.json");
+    investigationsData = parseEntry<any>("investigations.json");
+    auditLogsData = parseEntry<any>("audit_logs.json");
+    uploadSessionsData = parseEntry<any>("upload_sessions.json");
     /* eslint-enable @typescript-eslint/no-explicit-any */
+  } catch (error) {
+    console.error("[restore] Invalid backup file:", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "The uploaded file could not be read as a valid backup ZIP. It may be corrupted or was partially extracted. Re-download the backup and upload the .zip without unzipping it.",
+      },
+      { status: 400 }
+    );
+  }
 
+  // --- Phase 2: write to the database (DB problems → 500, NOT "bad format") -
+  try {
     // Execute restore in a transaction
     await prisma.$transaction(async (tx) => {
       // Delete in reverse dependency order
@@ -378,9 +415,18 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, counts });
   } catch (error) {
-    console.error("[restore] Error restoring backup:", error);
+    console.error("[restore] Error writing backup to database:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const isMissingTable =
+      (error as { code?: string })?.code === "P2021" ||
+      /does not exist in the current database/i.test(message);
     return NextResponse.json(
-      { ok: false, error: "Failed to restore backup. Please check the file format." },
+      {
+        ok: false,
+        error: isMissingTable
+          ? "The backup file is valid, but the database schema is not set up. Run `npx prisma migrate deploy` on the server, then try the restore again."
+          : `The backup file is valid, but writing it to the database failed: ${message}`,
+      },
       { status: 500 }
     );
   }
