@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getSettings } from "@/lib/store";
 import { findByPhone } from "@/lib/patients";
 import { generateConsultationHtml, type DoctorInfo } from "@/lib/prescription-pdf";
+import { generateQRBase64 } from "@/lib/qr";
 import { t } from "@/lib/i18n";
 
 export const runtime = "nodejs";
@@ -42,6 +43,13 @@ export async function GET(request: Request) {
     ? settings.appointment.chambers.find((c) => c.id === consultation.chamberId)
     : undefined;
   const chamberInfo = chamber ? { name: chamber.name, address: chamber.address, phone: chamber.phone } : undefined;
+
+  // Generate QR code for public prescription URL
+  if (consultation.publicToken) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const qrData = `${baseUrl}/prescription/${consultation.publicToken}`;
+    (consultation as any)._qrSvgBase64 = await generateQRBase64(qrData);
+  }
 
   const html = generateConsultationHtml(patient, consultation, doctorInfo, settings.prescription, chamberInfo);
 

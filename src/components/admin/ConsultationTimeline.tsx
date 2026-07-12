@@ -71,6 +71,20 @@ function TimelineItem({ consultation: con, patient, doctor, prescriptionConfig, 
           {con.notes && <p className="text-xs text-muted"><span className="font-medium text-ink">Notes:</span> {con.notes}</p>}
           <div className="flex items-center gap-3 pt-2 border-t border-slate-200">
             <PrescriptionActions patient={patient} consultation={con} doctor={doctor} rxConfig={prescriptionConfig} chambers={chambers} />
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/prescription/${con.publicToken}`;
+                navigator.clipboard.writeText(url).then(() => {
+                  alert("Link copied!");
+                }).catch(() => {
+                  prompt("Copy this link:", url);
+                });
+              }}
+              className="rounded bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-200"
+            >
+              Share Link
+            </button>
             {onEdit && <button type="button" onClick={onEdit} className="rounded bg-slate-200 px-2.5 py-1 text-xs font-medium text-ink hover:bg-slate-300">Edit</button>}
             {onDelete && <button type="button" onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline ml-auto">Delete</button>}
           </div>

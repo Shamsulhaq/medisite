@@ -84,10 +84,12 @@ export default function AdminShell({
   const router = useRouter();
   const [sideOpen, setSideOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "1") setCollapsed(true);
+    setIsMac(/Mac/.test(navigator.userAgent));
   }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -306,7 +308,7 @@ export default function AdminShell({
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 pr-16 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
               />
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                {typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent) ? "⌘K" : "Ctrl+K"}
+                {isMac ? "⌘K" : "Ctrl+K"}
               </span>
             </div>
             {showSearch && searchResults.length > 0 && (

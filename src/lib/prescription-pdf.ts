@@ -182,6 +182,7 @@ export function generateConsultationHtml(
     <span>${esc(footerLeft)}</span>
     <span>${esc(footerCenter)}</span>
     <span>${esc(footerRight)}</span>
+    ${consultation.publicToken ? `<div style="text-align:right;margin-top:8px"><img src="data:image/svg+xml;base64,${consultation._qrSvgBase64 || ""}" alt="QR" style="width:70px;height:70px;display:inline-block" /><p style="font-size:9px;color:#64748b;margin:2px 0 0">Scan for digital copy</p></div>` : ""}
   </div>
 </div>
 </body>

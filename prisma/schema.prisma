@@ -153,6 +153,8 @@ model Consultation {
   // Audit trail (edit versioning)
   previousVersionId String?
   superseded       Boolean  @default(false)
+  // Public prescription link
+  publicToken      String   @default(uuid()) @unique
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -161,6 +163,18 @@ model Consultation {
 
   @@index([patientId])
   @@index([date])
+}
+
+model UploadSession {
+  id         String   @id @default(uuid())
+  token      String   @unique @default(uuid())
+  patientId  String
+  targetType String   @default("attachment") // test_report, attachment
+  targetId   String   @default("")
+  files      String[] @default([])
+  status     String   @default("waiting") // waiting, completed, expired
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
 }
 
 model TestReport {

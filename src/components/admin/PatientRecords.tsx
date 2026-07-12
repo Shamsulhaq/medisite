@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Patient, RecordKind, Consultation } from "@/lib/patients";
 import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } from "@/lib/types";
 import { addRecordAction, deleteRecordAction, learnFromConsultationAction } from "@/app/admin/patient-actions";
-import { printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
+import { type DoctorInfo } from "@/lib/prescription-pdf";
 import { useToast } from "@/components/admin/ToastProvider";
 import ConsultationTimeline from "@/components/admin/ConsultationTimeline";
 import ConsultationForm from "@/components/admin/ConsultationForm";
@@ -150,35 +150,27 @@ export default function PatientRecords({ patient, doctor, prescriptionConfig, pr
 
       {!canWrite && (
         <div className="rounded-xl border border-slate-200 bg-white p-6">
-          {(() => {
-            const latestConsultation = patient.consultations.find((con) => !con.superseded);
-            if (!latestConsultation) {
-              return (
-                <button
-                  type="button"
-                  disabled
-                  title="No prescription available"
-                  className="w-full rounded-lg bg-brand px-5 py-3 text-sm font-semibold text-white opacity-50 cursor-not-allowed"
-                >
-                  🖨️ Print Latest Prescription
-                </button>
-              );
-            }
-            return (
-              <button
-                type="button"
-                onClick={() => {
-                  const chamberInfo = latestConsultation.chamberId
-                    ? (() => { const ch = chambers.find((x) => x.id === latestConsultation.chamberId); return ch ? { name: ch.name, address: ch.address, phone: ch.phone } : undefined; })()
-                    : undefined;
-                  printConsultation(patient, latestConsultation, doctor, prescriptionConfig, chamberInfo);
-                }}
-                className="w-full rounded-lg bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                🖨️ Print Latest Prescription
-              </button>
-            );
-          })()}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await fetch(`/api/admin/print-prescription?phone=${encodeURIComponent(patient.phone)}`);
+                if (!res.ok) return;
+                const html = await res.text();
+                const w = window.open("", "_blank");
+                if (!w) return;
+                w.document.write(html);
+                w.document.close();
+                w.focus();
+                setTimeout(() => w.print(), 400);
+              } catch {}
+            }}
+            disabled={!patient.consultations.some((c) => !c.superseded)}
+            title={!patient.consultations.some((c) => !c.superseded) ? "No prescription available" : ""}
+            className="w-full rounded-lg bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            🖨️ Print Latest Prescription
+          </button>
         </div>
       )}
 

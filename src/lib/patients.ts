@@ -58,6 +58,8 @@ export type Consultation = {
   };
   previousVersionId?: string;
   superseded?: boolean;
+  publicToken?: string;
+  _qrSvgBase64?: string; // transient, not stored — used for print rendering
 };
 
 // Legacy types kept for backward compatibility with existing data
@@ -162,6 +164,7 @@ function dbConsultationToType(row: {
   paymentStatus: string;
   previousVersionId: string | null;
   superseded: boolean;
+  publicToken: string;
 }): Consultation {
   return {
     id: row.id,
@@ -194,6 +197,7 @@ function dbConsultationToType(row: {
     },
     previousVersionId: row.previousVersionId ?? undefined,
     superseded: row.superseded,
+    publicToken: row.publicToken,
   };
 }
 
@@ -261,6 +265,7 @@ function dbPatientToType(row: {
     paymentStatus: string;
     previousVersionId: string | null;
     superseded: boolean;
+    publicToken: string;
   }>;
   testReports?: Array<{
     id: string;

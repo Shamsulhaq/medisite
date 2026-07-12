@@ -11,6 +11,7 @@ import { generateConsultationHtml, printConsultation, type DoctorInfo } from "@/
 import { useToast } from "@/components/admin/ToastProvider";
 import { clearPendingVitalsAction } from "@/app/admin/patient-actions";
 import ButtonSpinner from "@/components/admin/ButtonSpinner";
+import QRUploadModal from "@/components/admin/QRUploadModal";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
@@ -396,6 +397,7 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
   });
   const hasPendingVitals = !!(patient.pendingVitals && (patient.pendingVitals.bp || patient.pendingVitals.weight));
   const [printing, setPrinting] = useState(false);
+  const [showQRUpload, setShowQRUpload] = useState(false);
 
   const computedFee = (() => {
     if (!feeStructure) return 0;
@@ -745,8 +747,15 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
             <div className="border-t border-slate-100 pt-3">
               <label className="text-xs font-medium text-muted">Notes</label>
               <textarea value={c.notes} onChange={(e) => setC({ ...c, notes: e.target.value })} rows={2} className={inputClass} />
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-2">
                 <AttachmentField value={c.attachment ?? ""} onChange={(url) => setC({ ...c, attachment: url })} />
+                <button
+                  type="button"
+                  onClick={() => setShowQRUpload(true)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-slate-50"
+                >
+                  📱 Upload from Phone
+                </button>
               </div>
             </div>
           </div>
@@ -855,6 +864,21 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
             </div>
           </div>
         </div>
+      )}
+
+      {/* QR Upload Modal */}
+      {showQRUpload && (
+        <QRUploadModal
+          patientId={patient.id}
+          targetType="attachment"
+          onComplete={(files) => {
+            if (files.length > 0) {
+              setC({ ...c, attachment: files[0] });
+            }
+            setShowQRUpload(false);
+          }}
+          onClose={() => setShowQRUpload(false)}
+        />
       )}
     </section>
   );
