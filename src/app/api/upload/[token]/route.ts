@@ -7,7 +7,9 @@ import prisma from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+// Public assets are stored outside Next's build-time `public/` dir so runtime
+// uploads are served reliably in production (see /uploads route handler).
+const UPLOAD_DIR = path.join(process.cwd(), "data", "public-uploads");
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB per file
 
 const ALLOWED: Record<string, string> = {

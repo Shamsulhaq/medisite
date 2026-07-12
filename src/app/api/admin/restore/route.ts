@@ -106,6 +106,10 @@ export async function POST(request: Request) {
 
   // --- Phase 2: write to the database (DB problems → 500, NOT "bad format") -
   try {
+    // Audit logs reference users, but users are never re-created from a backup
+    // (backups exclude password hashes). Track how many we can actually keep.
+    let restoredAuditLogs = 0;
+    let skippedAuditLogs = 0;
     // Execute restore in a transaction
     await prisma.$transaction(async (tx) => {
       // Delete in reverse dependency order
@@ -359,9 +363,19 @@ export async function POST(request: Request) {
         }
       }
 
-      // Audit logs
+      // Audit logs — skip any referencing a user that does not exist in this
+      // database. Users are not re-created from backups (no password hashes),
+      // so an audit log pointing at a missing user would violate the
+      // AuditLog.userId foreign key and abort the whole restore.
       if (auditLogsData.length > 0) {
+        const existingUserIds = new Set(
+          (await tx.user.findMany({ select: { id: true } })).map((u) => u.id)
+        );
         for (const log of auditLogsData) {
+          if (!existingUserIds.has(log.userId)) {
+            skippedAuditLogs++;
+            continue;
+          }
           await tx.auditLog.create({
             data: {
               id: log.id,
@@ -375,6 +389,7 @@ export async function POST(request: Request) {
               createdAt: new Date(log.createdAt),
             },
           });
+          restoredAuditLogs++;
         }
       }
 
@@ -406,7 +421,8 @@ export async function POST(request: Request) {
       settings: settingsData.length,
       medicines: medicinesData.length,
       investigations: investigationsData.length,
-      auditLogs: auditLogsData.length,
+      auditLogs: restoredAuditLogs,
+      ...(skippedAuditLogs > 0 ? { auditLogsSkipped: skippedAuditLogs } : {}),
       uploadSessions: uploadSessionsData.length,
     };
 

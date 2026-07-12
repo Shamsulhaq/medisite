@@ -3,8 +3,11 @@
 //
 // - Patient attachments (context=patient): saved to data/secure-uploads/
 //   and served via /api/admin/files/<filename> (auth required).
-// - Public assets (doctor photos, blog covers): saved to public/uploads/
-//   and served directly via /uploads/<filename>.
+// - Public assets (doctor photos, blog covers): saved to data/public-uploads/
+//   and served via the /uploads/<filename> route handler.
+//   NOTE: these are intentionally NOT written into the Next.js `public/`
+//   directory — runtime writes there are not reliably served in production
+//   (standalone/containerized deployments serve a build-time snapshot).
 // -----------------------------------------------------------------------------
 
 import { NextResponse } from "next/server";
@@ -16,7 +19,7 @@ import { auth } from "@/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PUBLIC_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+const PUBLIC_UPLOAD_DIR = path.join(process.cwd(), "data", "public-uploads");
 const SECURE_UPLOAD_DIR = path.join(process.cwd(), "data", "secure-uploads");
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 
