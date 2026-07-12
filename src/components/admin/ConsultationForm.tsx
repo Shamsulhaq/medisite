@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Patient, Consultation, MedicineEntry, RecordKind } from "@/lib/patients";
 import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } from "@/lib/types";
 import MedicineInput from "@/components/admin/MedicineInput";
+import AdviceSelector from "@/components/admin/AdviceSelector";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
 import InvestigationAutocomplete from "@/components/admin/InvestigationAutocomplete";
 import { generateConsultationHtml, printConsultation, type DoctorInfo } from "@/lib/prescription-pdf";
@@ -60,7 +61,6 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
   editingConsultation?: Consultation | null;
 }) {
   const { toast } = useToast();
-  const [customAdviceInput, setCustomAdviceInput] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
@@ -190,7 +190,9 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
     setC((prev) => ({
       ...prev,
       medicines: [...tpl.medicines.map((m) => ({ ...m })), { ...emptyMed }],
-      advices: prev.advices.length ? prev.advices : [...tpl.advices],
+      // Merge the template's advices with any already selected so they are
+      // reflected as selected regardless of what was pre-filled.
+      advices: Array.from(new Set([...prev.advices, ...tpl.advices])),
     }));
     const groupLabel = tpl.ageGroup ? ` · ${tpl.ageGroup}` : "";
     toast("success", `Auto-filled from learned prescription for "${tpl.diagnosis}"${groupLabel}`);
@@ -463,59 +465,11 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
 
             <div className="border-t border-slate-100 pt-3">
               <label className="text-xs font-bold uppercase tracking-wide text-brand">Advices</label>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {prescriptionConfig.predefinedAdvices.map((adv) => {
-                  const idx = c.advices.indexOf(adv);
-                  const isSelected = idx >= 0;
-                  return (
-                    <button key={adv} type="button"
-                      onClick={() => {
-                        if (isSelected) {
-                          setC({ ...c, advices: c.advices.filter((a) => a !== adv) });
-                        } else {
-                          setC({ ...c, advices: [...c.advices, adv] });
-                        }
-                      }}
-                      className={`relative rounded-full px-3 py-1 text-xs font-medium transition ${isSelected ? "bg-brand text-white ring-2 ring-brand/30" : "bg-slate-100 text-ink hover:bg-brand-light"}`}>
-                      {isSelected && (
-                        <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-dark text-[10px] font-bold text-white">{idx + 1}</span>
-                      )}
-                      {adv.length > 25 ? adv.slice(0, 25) + "…" : adv}
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Show custom (non-predefined) selected advices */}
-              {c.advices.filter((a) => !prescriptionConfig.predefinedAdvices.includes(a)).length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {c.advices.filter((a) => !prescriptionConfig.predefinedAdvices.includes(a)).map((adv) => {
-                    const idx = c.advices.indexOf(adv);
-                    return (
-                      <button key={adv} type="button"
-                        onClick={() => setC({ ...c, advices: c.advices.filter((a) => a !== adv) })}
-                        className="relative rounded-full bg-brand text-white ring-2 ring-brand/30 px-3 py-1 text-xs font-medium transition">
-                        <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-dark text-[10px] font-bold text-white">{idx + 1}</span>
-                        {adv.length > 25 ? adv.slice(0, 25) + "…" : adv}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <input
-                value={customAdviceInput}
-                onChange={(e) => setCustomAdviceInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && customAdviceInput.trim()) {
-                    e.preventDefault();
-                    const val = customAdviceInput.trim();
-                    if (!c.advices.includes(val)) {
-                      setC({ ...c, advices: [...c.advices, val] });
-                    }
-                    setCustomAdviceInput("");
-                  }
-                }}
-                className={`${inputClass} mt-2`}
-                placeholder="Type custom advice + Enter"
+              <AdviceSelector
+                value={c.advices}
+                onChange={(advices) => setC({ ...c, advices })}
+                predefined={prescriptionConfig.predefinedAdvices}
+                inputClassName={inputClass}
               />
             </div>
 

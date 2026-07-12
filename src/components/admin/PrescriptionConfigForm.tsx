@@ -282,6 +282,7 @@ export default function PrescriptionConfigForm({
                         value={tpl}
                         onChange={(t) => updateTemplate(tpl.id, t)}
                         diagnosisSuggestions={p.predefinedDiagnoses}
+                        adviceSuggestions={p.predefinedAdvices}
                       />
                     </div>
                   )}

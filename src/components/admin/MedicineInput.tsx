@@ -7,7 +7,7 @@
 // editor so both behave identically.
 // -----------------------------------------------------------------------------
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MedicineEntry } from "@/lib/patients";
 import type { MedicineRef } from "@/lib/medicines";
 import { FREQUENCIES, DURATIONS, FORMS, shortForm } from "@/lib/medicines";
@@ -30,6 +30,19 @@ export default function MedicineInput({ entry, onChange, onRemove, index, onAdvi
   const userTypingRef = useRef(true);
   const deletingRef = useRef(false);
   const inlineSuggestionRef = useRef<{ name: string; med: MedicineRef; type: "generic" | "brand" } | null>(null);
+  // Tracks the last name THIS component emitted, so we can tell an external
+  // change (e.g. a template auto-fill) apart from the user's own typing.
+  const lastEmittedNameRef = useRef(entry.name);
+
+  // Sync the visible query when the medicine name is set from OUTSIDE (template
+  // auto-fill / pre-fill). Skipped for our own edits so inline autocomplete and
+  // typing are never disturbed.
+  useEffect(() => {
+    if (entry.name !== lastEmittedNameRef.current) {
+      setQuery(entry.name);
+      lastEmittedNameRef.current = entry.name;
+    }
+  }, [entry.name]);
 
   // Flatten suggestions: generics + their top brands
   const flatItems: { med: MedicineRef; name: string; type: "generic" | "brand" }[] = [];
@@ -72,6 +85,7 @@ export default function MedicineInput({ entry, onChange, onRemove, index, onAdvi
     inlineSuggestionRef.current = null;
     setQuery(v);
     onChange({ ...entry, name: v });
+    lastEmittedNameRef.current = v;
     if (timerRef.current) clearTimeout(timerRef.current);
     if (v.length < 1) { setSuggestions([]); setShowSugg(false); return; }
     timerRef.current = setTimeout(async () => {
@@ -128,6 +142,7 @@ export default function MedicineInput({ entry, onChange, onRemove, index, onAdvi
       dosage: med.dosages.length === 1 ? med.dosages[0] : entry.dosage,
     });
     setQuery(name);
+    lastEmittedNameRef.current = name;
     setShowSugg(false);
     setSuggestions([]);
     if (med.defaultAdvice && onAdviceAdd) onAdviceAdd(med.defaultAdvice);

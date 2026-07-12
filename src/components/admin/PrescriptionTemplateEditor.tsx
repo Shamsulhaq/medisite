@@ -10,6 +10,7 @@ import type { PrescriptionTemplate, PrescriptionTemplateMedicine } from "@/lib/t
 import type { MedicineEntry } from "@/lib/patients";
 import MedicineInput from "@/components/admin/MedicineInput";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
+import AdviceSelector from "@/components/admin/AdviceSelector";
 
 export const TEMPLATE_AGE_GROUPS = ["", "Infant", "Child", "Teen", "Adult", "Elderly"];
 
@@ -25,10 +26,12 @@ export default function PrescriptionTemplateEditor({
   value,
   onChange,
   diagnosisSuggestions = [],
+  adviceSuggestions = [],
 }: {
   value: PrescriptionTemplate;
   onChange: (t: PrescriptionTemplate) => void;
   diagnosisSuggestions?: string[];
+  adviceSuggestions?: string[];
 }) {
   const setMedicine = (i: number, m: MedicineEntry) =>
     onChange({ ...value, medicines: value.medicines.map((x, idx) => (idx === i ? m : x)) });
@@ -36,18 +39,12 @@ export default function PrescriptionTemplateEditor({
   const removeMedicine = (i: number) =>
     onChange({ ...value, medicines: value.medicines.filter((_, idx) => idx !== i) });
 
-  // Adds an advice (used both by the "Add advice" button and by MedicineInput's
-  // default-advice callback, matching the consultation form).
+  // MedicineInput calls this when a picked medicine has a default advice.
   const addAdviceText = (advice: string) => {
     const a = advice.trim();
     if (!a || value.advices.some((x) => x.toLowerCase() === a.toLowerCase())) return;
     onChange({ ...value, advices: [...value.advices, a] });
   };
-  const setAdvice = (i: number, v: string) =>
-    onChange({ ...value, advices: value.advices.map((x, idx) => (idx === i ? v : x)) });
-  const addAdviceRow = () => onChange({ ...value, advices: [...value.advices, ""] });
-  const removeAdvice = (i: number) =>
-    onChange({ ...value, advices: value.advices.filter((_, idx) => idx !== i) });
 
   return (
     <div className="space-y-4">
@@ -110,33 +107,11 @@ export default function PrescriptionTemplateEditor({
 
       <div>
         <p className="mb-2 text-sm font-semibold text-ink">Advices</p>
-        <div className="space-y-2">
-          {value.advices.map((a, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={a}
-                placeholder="Advice…"
-                onChange={(e) => setAdvice(i, e.target.value)}
-                className={control}
-              />
-              <button
-                type="button"
-                onClick={() => removeAdvice(i)}
-                className="text-xs font-medium text-red-600 hover:underline"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={addAdviceRow}
-          className="mt-2 text-sm font-medium text-brand hover:text-brand-dark"
-        >
-          + Add advice
-        </button>
+        <AdviceSelector
+          value={value.advices}
+          onChange={(advices) => onChange({ ...value, advices })}
+          predefined={adviceSuggestions}
+        />
       </div>
     </div>
   );
