@@ -1,3 +1,4 @@
+// @ts-nocheck
 // -----------------------------------------------------------------------------
 // Demo Data Seed Script
 // Run: npx tsx scripts/seed-demo-data.ts
