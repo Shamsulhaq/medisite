@@ -47,7 +47,7 @@ export default function PrescriptionLayoutDesigner({ initial, settings, sampleDa
   const [tab, setTab] = useState<"header" | "footer" | "body" | "watermark" | "page">("header");
 
   // Resizable
-  const [editorWidth, setEditorWidth] = useState(55);
+  const [editorWidth, setEditorWidth] = useState(70);
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
