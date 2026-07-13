@@ -392,6 +392,39 @@ export function validateAppointment(
   };
 }
 
+// ---- Dashboard-optimised queries -------------------------------------------
+
+/**
+ * Returns appointment counts for the dashboard stats without loading full rows.
+ * Uses COUNT queries at the database level for efficiency.
+ */
+export async function getAppointmentCounts(): Promise<{
+  today: number;
+  upcoming: number;
+  pending: number;
+}> {
+  const today = todayInBD();
+  const [todayCount, upcomingCount, pendingCount] = await Promise.all([
+    prisma.appointment.count({ where: { date: today } }),
+    prisma.appointment.count({ where: { date: { gte: today } } }),
+    prisma.appointment.count({ where: { status: "pending" } }),
+  ]);
+  return { today: todayCount, upcoming: upcomingCount, pending: pendingCount };
+}
+
+/**
+ * Returns only today's appointments, sorted by time.
+ * Used by the dashboard workflow queue.
+ */
+export async function getTodayAppointments(): Promise<Appointment[]> {
+  const today = todayInBD();
+  const rows = await prisma.appointment.findMany({
+    where: { date: today },
+    orderBy: { time: "asc" },
+  });
+  return rows.map(dbRowToType);
+}
+
 export async function completeAppointmentForPatient(
   phone: string,
   date: string

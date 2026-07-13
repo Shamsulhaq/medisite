@@ -4,6 +4,8 @@ import { getLocale } from "@/lib/i18n-server";
 import { t, UI } from "@/lib/i18n";
 import Icon from "@/components/Icon";
 import AppointmentForm from "@/components/AppointmentForm";
+import { getPageBlocks } from "@/lib/page-builder/data";
+import { renderBlock, type BlockContext } from "@/components/blocks";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
@@ -23,6 +25,33 @@ export default async function AppointmentPage() {
     appointmentsEnabled &&
     (appointment.chambers.length > 0 || appointment.online.enabled);
 
+  const name = t(doctor.name, locale);
+  const initials =
+    doctor.initials?.trim() ||
+    name
+      .replace(/^Dr\.?\s*|^ডা\.?\s*/i, "")
+      .split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("");
+
+  // --- Page Builder: render blocks if configured ---
+  const blocks = await getPageBlocks("appointment");
+
+  if (blocks.length > 0) {
+    const context: BlockContext = {
+      doctorName: name,
+      doctorPhoto: doctor.photo || undefined,
+      doctorInitials: initials,
+    };
+    return (
+      <>
+        {blocks.map((block) => renderBlock(block, locale, context))}
+      </>
+    );
+  }
+
+  // --- Fallback: existing hardcoded layout (used until a template is applied) ---
   return (
     <>
       <section className="bg-slate-50">

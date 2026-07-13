@@ -24,6 +24,7 @@ import { logAudit } from "@/lib/audit";
 import { addInvestigation, getInvestigations } from "@/lib/investigations";
 import { todayInBD, ageGroupOf } from "@/lib/utils";
 import prisma from "@/lib/db";
+import { patientInputSchema } from "@/lib/schemas";
 
 async function requireSession() {
   const session = await auth();
@@ -38,13 +39,18 @@ export async function createPatientAction(
     await requireSession();
     await requirePermission("canCreatePatient");
 
-    if (!input.name?.trim()) {
-      return { ok: false, error: "Patient name is required." };
+    // Validate input with Zod schema
+    const parsed = patientInputSchema.safeParse(input);
+    if (!parsed.success) {
+      const firstError = parsed.error.issues[0]?.message ?? "Invalid input.";
+      return { ok: false, error: firstError };
     }
-    if (!input.phone?.trim()) {
-      return { ok: false, error: "Phone number is required (used as identity)." };
-    }
-    const { patient, error } = await createPatient(input);
+
+    const { patient, error } = await createPatient({
+      ...input,
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+    });
     if (error) return { ok: false, error };
     revalidatePath("/admin/patients");
 

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { getAppointments, validateAppointment, bookAppointmentWithCapacityCheck } from "@/lib/appointments";
+import { getAppointments, bookAppointmentWithCapacityCheck } from "@/lib/appointments";
 import { getSettings } from "@/lib/store";
 import { generateSlotsForDate, dayMaxPatients } from "@/lib/availability";
 import { rateLimit, getClientIp, rateLimitHeaders } from "@/lib/rate-limit";
+import { appointmentBookingSchema } from "@/lib/schemas";
 
 // File writes require the Node.js runtime (not Edge).
 export const runtime = "nodejs";
@@ -65,10 +66,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = validateAppointment(body);
-  if (!result.ok) {
+  const result = appointmentBookingSchema.safeParse(body);
+  if (!result.success) {
+    const errors = result.error.issues.map((i) => i.message);
     return NextResponse.json(
-      { ok: false, errors: result.errors },
+      { ok: false, errors },
       { status: 422 }
     );
   }
@@ -82,7 +84,7 @@ export async function POST(request: Request) {
   }
 
   const { mode, chamberId, name, email, phone, date, time, reason } =
-    result.value;
+    result.data;
   const cfg = settings.appointment;
 
   // Resolve the schedule + human-readable location for the chosen mode.

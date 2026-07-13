@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Patient, Consultation, MedicineEntry, RecordKind } from "@/lib/patients";
 import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } from "@/lib/types";
+import type { PrescriptionLayout } from "@/lib/prescription-layout";
 import MedicineInput from "@/components/admin/MedicineInput";
 import AdviceSelector from "@/components/admin/AdviceSelector";
 import DiagnosisAutocomplete from "@/components/admin/DiagnosisAutocomplete";
@@ -65,10 +66,11 @@ function AttachmentField({ value, onChange }: { value: string; onChange: (url: s
   );
 }
 
-export default function ConsultationForm({ patient, doctor, prescriptionConfig, prescriptionTemplates = [], chambers, appointments, pending, feeStructure, onSave }: {
+export default function ConsultationForm({ patient, doctor, prescriptionConfig, prescriptionLayout, prescriptionTemplates = [], chambers, appointments, pending, feeStructure, onSave }: {
   patient: Patient;
   doctor: DoctorInfo;
   prescriptionConfig: PrescriptionConfig;
+  prescriptionLayout?: PrescriptionLayout | null;
   prescriptionTemplates?: PrescriptionTemplate[];
   chambers: Chamber[];
   appointments: Appointment[];
@@ -298,7 +300,7 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
     // generated on save). Showing a QR here would point to a *different*
     // consultation's content, so the QR block is intentionally omitted from
     // the preview — it will render correctly after saving and printing.
-    const html = generateConsultationHtml(patient, consultationData, doctor, prescriptionConfig, chamberInfo);
+    const html = generateConsultationHtml(patient, consultationData, doctor, prescriptionConfig, chamberInfo, prescriptionLayout);
     setPreviewHtml(html);
     setShowPreviewModal(true);
   }
@@ -324,7 +326,7 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
             if (toPrint.publicToken) {
               toPrint._qrSvgBase64 = await fetchQrSvgBase64(toPrint.publicToken);
             }
-            printConsultation(patient, toPrint, doctor, prescriptionConfig, chamberInfo);
+            printConsultation(patient, toPrint, doctor, prescriptionConfig, chamberInfo, prescriptionLayout);
             setTimeout(() => setPrinting(false), 1000);
           })();
         }

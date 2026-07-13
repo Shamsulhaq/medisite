@@ -31,9 +31,9 @@ export default {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.username = user.name;
+        token.username = user.name ?? undefined;
         token.userId = user.id;
-        token.role = user.email; // role piggybacked on email field
+        token.role = user.role;
       }
       return token;
     },
@@ -45,19 +45,30 @@ export default {
         session.user.id = token.userId as string;
       }
       if (token.role) {
-        session.user.email = token.role as string; // role accessible as session.user.email
+        session.user.role = token.role as string;
       }
       return session;
     },
     authorized({ auth: session, request: { nextUrl } }) {
       const isLoggedIn = !!session?.user;
       const isAdminRoute = nextUrl.pathname.startsWith("/admin");
+      const isAdminApi = nextUrl.pathname.startsWith("/api/admin");
       const isLoginPage = nextUrl.pathname === "/admin/login";
 
+      // Protect admin API routes — return 401 JSON response
+      if (isAdminApi && !isLoggedIn) {
+        return Response.json(
+          { error: "Unauthorized" },
+          { status: 401 }
+        );
+      }
+
+      // Redirect unauthenticated users to login page
       if (isAdminRoute && !isLoginPage && !isLoggedIn) {
         return Response.redirect(new URL("/admin/login", nextUrl));
       }
 
+      // Redirect logged-in users away from login page
       if (isLoginPage && isLoggedIn) {
         return Response.redirect(new URL("/admin", nextUrl));
       }

@@ -178,7 +178,7 @@ export default function PatientsExplorer({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {items.map((p) => (
-                  <tr key={p.id} className="transition hover:bg-slate-50/60">
+                  <tr key={p.id} onClick={() => router.push(`/admin/patients/${p.id}`)} className="cursor-pointer transition hover:bg-slate-50/60">
                     <td className="px-5 py-3">
                       <Badge tone="brand">{p.patientId}</Badge>
                     </td>

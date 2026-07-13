@@ -8,8 +8,6 @@ import InvestigationList from "@/components/admin/InvestigationList";
 import PrescriptionTemplateEditor from "@/components/admin/PrescriptionTemplateEditor";
 
 const TABS = [
-  { id: "header", label: "Header" },
-  { id: "footer", label: "Footer" },
   { id: "advices", label: "Advices" },
   { id: "diagnoses", label: "Diagnoses" },
   { id: "investigations", label: "Investigations" },
@@ -29,7 +27,7 @@ export default function PrescriptionConfigForm({
 }) {
   const [p, setP] = useState<PrescriptionConfig>(initial.prescription);
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>(initial.prescriptionTemplates ?? []);
-  const [tab, setTab] = useState<TabId>("header");
+  const [tab, setTab] = useState<TabId>("advices");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [openTemplateId, setOpenTemplateId] = useState<string | null>(null);
@@ -72,15 +70,6 @@ export default function PrescriptionConfigForm({
   function addToList(key: "predefinedAdvices" | "predefinedDiagnoses" | "timingOptions" | "followUpOptions") {
     setP({ ...p, [key]: [...p[key], ""] });
   }
-  function editHeaderLine(side: "leftLines" | "rightLines" | "contactLines", i: number, v: string) {
-    setP({ ...p, header: { ...p.header, [side]: p.header[side].map((x, idx) => (idx === i ? v : x)) } });
-  }
-  function removeHeaderLine(side: "leftLines" | "rightLines" | "contactLines", i: number) {
-    setP({ ...p, header: { ...p.header, [side]: p.header[side].filter((_, idx) => idx !== i) } });
-  }
-  function addHeaderLine(side: "leftLines" | "rightLines" | "contactLines") {
-    setP({ ...p, header: { ...p.header, [side]: [...p.header[side], ""] } });
-  }
 
   return (
     <form onSubmit={handleSave} className="pb-24">
@@ -95,52 +84,6 @@ export default function PrescriptionConfigForm({
           </button>
         ))}
       </div>
-
-      {/* HEADER */}
-      {tab === "header" && (
-        <div className="space-y-6">
-          <Section title="Prescription Header — Left (Bengali)" description="Bengali lines shown on the left side of the printed prescription header.">
-            {p.header.leftLines.map((line, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input value={line} onChange={(e) => editHeaderLine("leftLines", i, e.target.value)} className={inputClass} dir="auto" />
-                <button type="button" onClick={() => removeHeaderLine("leftLines", i)} className="text-xs text-red-600 hover:underline">✕</button>
-              </div>
-            ))}
-            <AddButton label="Add line" onClick={() => addHeaderLine("leftLines")} />
-          </Section>
-
-          <Section title="Prescription Header — Right (English)" description="English lines shown on the right side.">
-            {p.header.rightLines.map((line, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input value={line} onChange={(e) => editHeaderLine("rightLines", i, e.target.value)} className={inputClass} />
-                <button type="button" onClick={() => removeHeaderLine("rightLines", i)} className="text-xs text-red-600 hover:underline">✕</button>
-              </div>
-            ))}
-            <AddButton label="Add line" onClick={() => addHeaderLine("rightLines")} />
-          </Section>
-
-          <Section title="Contact Info" description="Phone, email, reg. number etc. (shown below the header).">
-            {p.header.contactLines.map((line, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input value={line} onChange={(e) => editHeaderLine("contactLines", i, e.target.value)} className={inputClass} />
-                <button type="button" onClick={() => removeHeaderLine("contactLines", i)} className="text-xs text-red-600 hover:underline">✕</button>
-              </div>
-            ))}
-            <AddButton label="Add line" onClick={() => addHeaderLine("contactLines")} />
-          </Section>
-        </div>
-      )}
-
-      {/* FOOTER */}
-      {tab === "footer" && (
-        <div className="space-y-6">
-          <Section title="Prescription Footer" description="Text shown at the bottom of the printed prescription.">
-            <TextField label="Left" value={p.footer.leftText} onChange={(v) => setP({ ...p, footer: { ...p.footer, leftText: v } })} placeholder="e.g. Patient ID shown automatically" />
-            <TextField label="Center" value={p.footer.centerText} onChange={(v) => setP({ ...p, footer: { ...p.footer, centerText: v } })} placeholder="e.g. Generated digitally" />
-            <TextField label="Right" value={p.footer.rightText} onChange={(v) => setP({ ...p, footer: { ...p.footer, rightText: v } })} placeholder="e.g. Doctor signature" />
-          </Section>
-        </div>
-      )}
 
       {/* ADVICES */}
       {tab === "advices" && (
@@ -307,7 +250,7 @@ export default function PrescriptionConfigForm({
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="text-sm">
             {msg ? (<span className={msg.type === "ok" ? "text-green-600" : "text-red-600"}>{msg.text}</span>) : (
-              <span className="text-muted">Configure prescription layout and presets.</span>
+              <span className="text-muted">Configure prescription data — advices, diagnoses, timing, templates.</span>
             )}
           </div>
           <button type="submit" disabled={saving}

@@ -80,6 +80,8 @@ model BlogPost {
   viewCount       Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([published, date])
 }
 
 model BlogRevision {
@@ -118,6 +120,8 @@ model Patient {
 
   consultations Consultation[]
   testReports   TestReport[]
+
+  @@index([createdAt])
 }
 
 model Consultation {
@@ -163,6 +167,8 @@ model Consultation {
 
   @@index([patientId])
   @@index([date])
+  @@index([patientId, superseded])
+  @@index([publicToken])
 }
 
 model UploadSession {
@@ -208,6 +214,8 @@ model Appointment {
 
   @@index([date])
   @@index([phone])
+  @@index([status, date])
+  @@index([location, date])
 }
 
 // --- MEDICINES ---
@@ -231,5 +239,14 @@ model Investigation {
   category  String   @default("") // e.g. "Blood", "Imaging", "Urine", "Cardiac"
   aliases   String[] @default([]) // alternative names for search
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- PAGE BUILDER ---
+
+model Page {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  blocks    Json     @default("[]")
   updatedAt DateTime @updatedAt
 }

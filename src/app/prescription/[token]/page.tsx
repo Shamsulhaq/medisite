@@ -107,7 +107,7 @@ export default async function PublicPrescriptionPage({ params }: { params: Promi
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   con._qrSvgBase64 = await generateQRBase64(`${baseUrl}/prescription/${token}`);
 
-  const html = generateConsultationHtml(patient, con, doctor, rxConfig, chamberInfo);
+  const html = generateConsultationHtml(patient, con, doctor, rxConfig, chamberInfo, (settings?.prescriptionLayout ?? null) as any);
 
   return <PrescriptionView html={html} token={token} patientName={patient.name} />;
 }

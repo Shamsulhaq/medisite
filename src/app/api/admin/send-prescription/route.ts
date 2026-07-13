@@ -79,7 +79,8 @@ export async function POST(request: Request) {
           const ch = settings.appointment.chambers.find((c) => c.id === consultation.chamberId);
           return ch ? { name: ch.name, address: ch.address, phone: ch.phone } : undefined;
         })()
-      : undefined
+      : undefined,
+    settings.prescriptionLayout
   );
 
   try {

@@ -26,6 +26,7 @@ import type { SiteSettings, AppointmentStatus } from "@/lib/types";
 import { requirePermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/rbac";
+import { postInputSchema, accountUpdateSchema } from "@/lib/schemas";
 
 async function requireSession() {
   const session = await auth();
@@ -103,10 +104,21 @@ export async function updateAccountAction(
 ): Promise<AccountState> {
   const session = await requireSession();
 
-  const newUsername = String(formData.get("username") ?? "").trim();
-  const currentPassword = String(formData.get("currentPassword") ?? "");
-  const newPassword = String(formData.get("newPassword") ?? "");
-  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const rawInput = {
+    username: String(formData.get("username") ?? "").trim() || undefined,
+    currentPassword: String(formData.get("currentPassword") ?? ""),
+    newPassword: String(formData.get("newPassword") ?? ""),
+    confirmPassword: String(formData.get("confirmPassword") ?? ""),
+  };
+
+  // Validate input with Zod schema
+  const parsed = accountUpdateSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message ?? "Invalid input.";
+    return { error: firstError };
+  }
+
+  const { username: newUsername, currentPassword, newPassword } = parsed.data;
 
   const sessionUsername = session.user?.name;
   if (!sessionUsername) {
@@ -119,19 +131,6 @@ export async function updateAccountAction(
 
   if (!verifyPassword(currentPassword, user.salt, user.hash)) {
     return { error: "Your current password is incorrect." };
-  }
-
-  if (newUsername && newUsername.length < 3) {
-    return { error: "Username must be at least 3 characters." };
-  }
-
-  if (newPassword || confirmPassword) {
-    if (newPassword.length < 6) {
-      return { error: "New password must be at least 6 characters." };
-    }
-    if (newPassword !== confirmPassword) {
-      return { error: "New password and confirmation do not match." };
-    }
   }
 
   if (newUsername && newUsername !== user.username) {
@@ -183,9 +182,13 @@ export async function savePostAction(
   await requirePermission("canManageBlog");
 
   try {
-    if (!input.title?.en?.trim() && !input.title?.bn?.trim()) {
-      return { ok: false, error: "Title is required." };
+    // Validate input with Zod schema
+    const parsed = postInputSchema.safeParse(input);
+    if (!parsed.success) {
+      const firstError = parsed.error.issues[0]?.message ?? "Invalid post data.";
+      return { ok: false, error: firstError };
     }
+
     const post = id ? await updatePost(id, input) : await createPost(input);
     if (!post) return { ok: false, error: "Post not found." };
     revalidatePublic();

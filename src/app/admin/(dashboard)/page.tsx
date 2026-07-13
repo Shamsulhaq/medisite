@@ -1,6 +1,14 @@
 import Link from "next/link";
-import { getAppointments, filterAppointments } from "@/lib/appointments";
-import { getPatients } from "@/lib/patients";
+import { getAppointmentCounts, getTodayAppointments } from "@/lib/appointments";
+import {
+  getPatientCount,
+  getTodayRevenue,
+  getRecentPatients,
+  getRecentFollowUps,
+  getDoctorVisitedTodayCount,
+  getPatientsWithPendingVitalsCount,
+  getPatientsByPhones,
+} from "@/lib/patients";
 import { getCurrentUser } from "@/lib/rbac";
 import { todayInBD } from "@/lib/utils";
 import AdminIcon from "@/components/admin/AdminIcon";
@@ -20,58 +28,67 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default async function DashboardHome() {
-  const [appointments, patients, currentUser] = await Promise.all([
-    getAppointments(),
-    getPatients(),
+  const todayStr = todayInBD();
+
+  // Fetch all dashboard data in parallel using efficient queries
+  const [
+    appointmentCounts,
+    todaysAppointments,
+    patientCount,
+    todaysRevenue,
+    recentPatients,
+    pendingFollowups,
+    doctorVisitedToday,
+    patientsWithPendingVitals,
+    currentUser,
+  ] = await Promise.all([
+    getAppointmentCounts(),
+    getTodayAppointments(),
+    getPatientCount(),
+    getTodayRevenue(todayStr),
+    getRecentPatients(5),
+    getRecentFollowUps(8),
+    getDoctorVisitedTodayCount(todayStr),
+    getPatientsWithPendingVitalsCount(),
     getCurrentUser(),
   ]);
 
   const isDoctor = currentUser?.role === "DOCTOR";
-  const todayStr = todayInBD();
-  const todayCount = filterAppointments(appointments, "today").length;
-  const upcomingCount = filterAppointments(appointments, "upcoming").length;
-  const pendingCount = appointments.filter((a) => a.status === "pending").length;
+
+  // Build a phone→patient map for linking appointments to patient records
+  const appointmentPhones = todaysAppointments.map((a) => a.phone);
+  const patientPhoneMap = await getPatientsByPhones(appointmentPhones);
 
   const stats = [
     {
       label: "Today's Appointments",
-      value: todayCount,
+      value: appointmentCounts.today,
       icon: "calendar",
       tone: "text-sky-600 bg-sky-50",
       href: "/admin/appointments?range=today",
     },
     {
       label: "Upcoming",
-      value: upcomingCount,
+      value: appointmentCounts.upcoming,
       icon: "clock",
       tone: "text-brand bg-brand-light",
       href: "/admin/appointments?range=upcoming",
     },
     {
       label: "Pending Requests",
-      value: pendingCount,
+      value: appointmentCounts.pending,
       icon: "check",
       tone: "text-amber-600 bg-amber-50",
       href: "/admin/appointments",
     },
     {
       label: "Patients",
-      value: patients.length,
+      value: patientCount,
       icon: "users",
       tone: "text-violet-600 bg-violet-50",
       href: "/admin/patients",
     },
   ];
-
-  // Today's revenue from consultation payments
-  const todaysRevenue = patients.reduce((sum, p) => {
-    for (const con of p.consultations) {
-      if (con.date === todayStr && con.payment) {
-        sum += con.payment.received;
-      }
-    }
-    return sum;
-  }, 0);
 
   const quickActions = [
     {
@@ -100,66 +117,9 @@ export default async function DashboardHome() {
     },
   ];
 
-  // Today's appointments (for new section)
-  const todaysAppointments = appointments
-    .filter((a) => a.date === todayStr)
-    .sort((a, b) => (a.time < b.time ? -1 : 1));
-
-  // Recent patients (by updatedAt)
-  const recentPatients = [...patients]
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-    .slice(0, 5);
-
-  // Pending follow-ups
-  const pendingFollowups: { id: string; name: string; patientId: string; lastVisitDate: string; followUp: string; daysOverdue: number }[] = [];
-  const now = new Date();
-  for (const p of patients) {
-    if (p.consultations.length === 0) continue;
-    const latest = p.consultations[0]; // already sorted newest-first
-    if (!latest.followUp) continue;
-    // Try to extract a date from the followUp text
-    const dateMatch = latest.followUp.match(/(\d{4}-\d{2}-\d{2})/);
-    let followUpDate: Date | null = null;
-    if (dateMatch) {
-      followUpDate = new Date(dateMatch[1]);
-    } else {
-      // Try relative durations like "৭ দিন পর", "After 7 days", "1 month পর", "After 1 month"
-      const daysMatch = latest.followUp.match(/(\d+)\s*(দিন|days?)/i);
-      const weeksMatch = latest.followUp.match(/(\d+)\s*(সপ্তাহ|weeks?)/i);
-      const monthsMatch = latest.followUp.match(/(\d+)\s*(মাস|months?)/i);
-      const visitDate = new Date(latest.date);
-      if (daysMatch) {
-        followUpDate = new Date(visitDate.getTime() + Number(daysMatch[1]) * 86400000);
-      } else if (weeksMatch) {
-        followUpDate = new Date(visitDate.getTime() + Number(weeksMatch[1]) * 7 * 86400000);
-      } else if (monthsMatch) {
-        followUpDate = new Date(visitDate);
-        followUpDate.setMonth(followUpDate.getMonth() + Number(monthsMatch[1]));
-      }
-    }
-    if (followUpDate && followUpDate < now) {
-      const daysOverdue = Math.floor((now.getTime() - followUpDate.getTime()) / 86400000);
-      pendingFollowups.push({
-        id: p.id,
-        name: p.name,
-        patientId: p.patientId,
-        lastVisitDate: latest.date,
-        followUp: latest.followUp,
-        daysOverdue,
-      });
-    }
-  }
-  pendingFollowups.sort((a, b) => b.daysOverdue - a.daysOverdue);
-
   // Attendant-specific counts
   const confirmedToday = todaysAppointments.filter((a) => a.status === "confirmed").length;
   const pendingToday = todaysAppointments.filter((a) => a.status === "pending").length;
-  const doctorVisitedToday = patients.filter((p) =>
-    p.consultations.some((con) => con.date === todayStr && !con.superseded)
-  ).length;
-  const patientsWithPendingVitals = patients.filter((p) =>
-    p.pendingVitals && p.pendingVitals.bp
-  ).length;
 
   if (!isDoctor) {
     // ATTENDANT DASHBOARD
@@ -277,11 +237,9 @@ export default async function DashboardHome() {
   const nextPatient = todaysAppointments.find(
     (a) => a.status === "pending" || a.status === "confirmed"
   );
-  // Try to find the patient record for the next appointment
+  // Look up patient record for the next appointment via the phone map
   const nextPatientRecord = nextPatient
-    ? patients.find(
-        (p) => p.phone.replace(/[\s\-()]/g, "") === nextPatient.phone.replace(/[\s\-()]/g, "")
-      )
+    ? patientPhoneMap.get(nextPatient.phone.replace(/[\s\-()]/g, ""))
     : null;
 
   return (
@@ -342,8 +300,8 @@ export default async function DashboardHome() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {todaysAppointments.map((a) => {
-              const patientRecord = patients.find(
-                (p) => p.phone.replace(/[\s\-()]/g, "") === a.phone.replace(/[\s\-()]/g, "")
+              const patientRecord = patientPhoneMap.get(
+                a.phone.replace(/[\s\-()]/g, "")
               );
               return (
                 <li key={a.id} className="flex items-center gap-3 px-5 py-2.5">

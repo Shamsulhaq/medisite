@@ -171,6 +171,8 @@ function normalizeSettings(raw: any): SiteSettings {
     prescriptionTemplates: Array.isArray(s.prescriptionTemplates)
       ? (s.prescriptionTemplates as unknown[]).map(normalizePrescriptionTemplate)
       : [],
+    prescriptionLayout: s.prescriptionLayout ? s.prescriptionLayout as import("./prescription-layout").PrescriptionLayout : undefined,
+    appearance: s.appearance ? s.appearance as import("./types").SiteAppearance : undefined,
     blog: normalizeBlogConfig(s.blog),
   };
 }

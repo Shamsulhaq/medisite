@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Patient, RecordKind, Consultation } from "@/lib/patients";
 import type { PrescriptionConfig, Chamber, Appointment, PrescriptionTemplate } from "@/lib/types";
+import type { PrescriptionLayout } from "@/lib/prescription-layout";
 import { addRecordAction, deleteRecordAction, learnFromConsultationAction } from "@/app/admin/patient-actions";
 import { type DoctorInfo } from "@/lib/prescription-pdf";
 import { useToast } from "@/components/admin/ToastProvider";
@@ -11,10 +12,11 @@ import ConsultationTimeline from "@/components/admin/ConsultationTimeline";
 import ConsultationForm from "@/components/admin/ConsultationForm";
 import TestReportsSection from "@/components/admin/TestReportsSection";
 
-export default function PatientRecords({ patient, doctor, prescriptionConfig, prescriptionTemplates, chambers, appointments, feeStructure, permissions, testReportsOnly }: {
+export default function PatientRecords({ patient, doctor, prescriptionConfig, prescriptionLayout, prescriptionTemplates, chambers, appointments, feeStructure, permissions, testReportsOnly }: {
   patient: Patient;
   doctor: DoctorInfo;
   prescriptionConfig: PrescriptionConfig;
+  prescriptionLayout?: PrescriptionLayout | null;
   prescriptionTemplates: PrescriptionTemplate[];
   chambers: Chamber[];
   appointments: Appointment[];
@@ -138,6 +140,7 @@ export default function PatientRecords({ patient, doctor, prescriptionConfig, pr
             patient={patient}
             doctor={doctor}
             prescriptionConfig={prescriptionConfig}
+            prescriptionLayout={prescriptionLayout}
             prescriptionTemplates={prescriptionTemplates}
             chambers={chambers}
             appointments={appointments}

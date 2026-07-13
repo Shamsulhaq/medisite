@@ -7,6 +7,11 @@ import { logoutAction } from "@/app/admin/actions";
 import AdminIcon from "@/components/admin/AdminIcon";
 import TopProgressBar from "@/components/admin/TopProgressBar";
 
+type NavChild = {
+  href: string;
+  label: string;
+};
+
 type NavItem = {
   href: string;
   label: string;
@@ -14,6 +19,7 @@ type NavItem = {
   exact?: boolean;
   permission?: string; // required permission key
   roleOnly?: string; // only show for this role
+  children?: NavChild[];
 };
 
 type NavGroup = {
@@ -23,34 +29,90 @@ type NavGroup = {
 
 const NAV_GROUPS: NavGroup[] = [
   {
+    label: "DASHBOARD",
+    items: [
+      { href: "/admin", label: "Dashboard", icon: "layout", exact: true },
+      { href: "/admin/reports", label: "Reports", icon: "barChart", roleOnly: "DOCTOR" },
+    ],
+  },
+  {
     label: "CLINIC",
     items: [
-      { href: "/admin", label: "Dashboard", icon: "grid", exact: true },
-      { href: "/admin/appointments", label: "Appointments", icon: "calendar" },
-      { href: "/admin/patients", label: "Patient Records", icon: "users" },
+      {
+        href: "/admin/appointments",
+        label: "Appointments",
+        icon: "calendarCheck",
+        children: [
+          { href: "/admin/appointments", label: "All Appointments" },
+          { href: "/admin/appointments/settings", label: "Configure Settings" },
+        ],
+      },
+      {
+        href: "/admin/patients",
+        label: "Patients",
+        icon: "users",
+        children: [
+          { href: "/admin/patients", label: "Patient List" },
+          { href: "/admin/settings/prescription", label: "Prescription Utilities" },
+        ],
+      },
+      { href: "/admin/medicines", label: "Medicines", icon: "pill", permission: "canManageMedicines" },
     ],
   },
   {
-    label: "CONTENT",
+    label: "PAGES",
     items: [
-      { href: "/admin/posts", label: "Blog Posts", icon: "fileText", permission: "canManageBlog" },
-      { href: "/admin/medicines", label: "Medicines", icon: "fileText", permission: "canManageMedicines" },
+      {
+        href: "/admin/pages/home",
+        label: "Home",
+        icon: "home",
+        permission: "canManageSettings",
+      },
+      {
+        href: "/admin/pages/about",
+        label: "About Us",
+        icon: "info",
+        permission: "canManageSettings",
+      },
+      {
+        href: "/admin/pages/contact",
+        label: "Contact Us",
+        icon: "mail",
+        permission: "canManageSettings",
+      },
+      {
+        href: "/admin/posts",
+        label: "Blogs",
+        icon: "newspaper",
+        permission: "canManageBlog",
+        children: [
+          { href: "/admin/posts/categories", label: "Categories" },
+          { href: "/admin/posts", label: "All Posts" },
+        ],
+      },
     ],
   },
   {
-    label: "ADMIN",
+    label: "SETTINGS",
     items: [
-      { href: "/admin/settings", label: "Settings", icon: "settings", permission: "canManageSettings" },
-      { href: "/admin/reports", label: "Reports", icon: "grid", roleOnly: "DOCTOR" },
-      { href: "/admin/users", label: "Users", icon: "users", roleOnly: "DOCTOR" },
-      { href: "/admin/audit", label: "Audit Log", icon: "fileText", roleOnly: "DOCTOR" },
-      { href: "/admin/backup", label: "Backup", icon: "grid", roleOnly: "DOCTOR" },
+      { href: "/admin/settings/general", label: "General Settings", icon: "settings", permission: "canManageSettings" },
+      { href: "/admin/settings/prescription/design", label: "Prescription Design", icon: "penTool", permission: "canManageSettings" },
+      { href: "/admin/settings/email", label: "Email Settings", icon: "send", permission: "canManageSettings" },
+      { href: "/admin/settings/payment", label: "Payment Settings", icon: "creditCard", permission: "canManageSettings" },
+      { href: "/admin/settings/backup", label: "Backup & Restore", icon: "database", roleOnly: "DOCTOR" },
+    ],
+  },
+  {
+    label: "USERS",
+    items: [
+      { href: "/admin/users", label: "Manage Users", icon: "userCog", roleOnly: "DOCTOR" },
     ],
   },
 ];
 
 function pageTitle(pathname: string): string {
   if (pathname === "/admin") return "Dashboard";
+  if (pathname.startsWith("/admin/pages")) return "Pages";
   if (pathname.startsWith("/admin/settings")) return "Settings";
   if (pathname.startsWith("/admin/medicines")) return "Medicines";
   if (pathname.startsWith("/admin/account")) return "Account";
@@ -85,12 +147,12 @@ export default function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
   const [sideOpen, setSideOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved === "1") setCollapsed(true);
+    if (saved === "0") setCollapsed(false);
     setIsMac(/Mac/.test(navigator.userAgent));
   }, []);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -178,7 +240,7 @@ export default function AdminShell({
       <aside
         className={`fixed inset-y-0 left-0 z-[70] flex flex-col bg-slate-900 shadow-2xl transition-all duration-300 ease-in-out lg:shadow-none lg:translate-x-0 ${
           sideOpen ? "translate-x-0 w-64" : "-translate-x-full w-64"
-        } ${collapsed ? "lg:w-16" : "lg:w-64"}`}
+        } ${collapsed ? "lg:w-16 lg:overflow-visible" : "lg:w-64"}`}
       >
         {/* Brand */}
         <div className={`flex h-14 items-center border-b border-white/10 px-3 ${collapsed ? "lg:justify-center" : ""}`}>
@@ -192,7 +254,7 @@ export default function AdminShell({
             <span className={`text-sm font-bold text-white ${collapsed ? "lg:hidden" : ""}`}>Admin</span>
           </div>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+        <nav className={`flex-1 space-y-0.5 px-2 py-3 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
           {visibleGroups.map((group) => (
             <div key={group.label}>
               {!collapsed && (
@@ -200,20 +262,15 @@ export default function AdminShell({
                   {group.label}
                 </p>
               )}
-              {group.items.map((item) => {
-                const active = isActive(item.href, item.exact);
-                return (
-                  <Link key={item.href} href={item.href}
-                    onClick={() => setSideOpen(false)}
-                    title={collapsed ? item.label : undefined}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
-                      collapsed ? "lg:justify-center lg:px-0" : ""
-                    } ${active ? "bg-brand text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
-                    <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
-                    <span className={`${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
-                  </Link>
-                );
-              })}
+              {group.items.map((item) => (
+                <NavItemWithChildren
+                  key={item.href + item.label}
+                  item={item}
+                  pathname={pathname}
+                  collapsed={collapsed}
+                  onNavigate={() => setSideOpen(false)}
+                />
+              ))}
             </div>
           ))}
         </nav>
@@ -414,6 +471,175 @@ export default function AdminShell({
           <div className="w-full">{children}</div>
         </main>
       </div>
+    </div>
+  );
+}
+
+// ─── Nav Item with Expandable Children ────────────────────────────────────────
+
+function NavItemWithChildren({
+  item,
+  pathname,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  collapsed: boolean;
+  onNavigate: () => void;
+}) {
+  const hasChildren = item.children && item.children.length > 0;
+  const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+  // For expansion: detect if current path belongs to any child (including nested sub-routes)
+  const isChildActive = hasChildren && item.children!.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
+  const active = isActive || isChildActive;
+  const [expanded, setExpanded] = useState(active);
+  const [showPopover, setShowPopover] = useState(false);
+  const popoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-expand when a child becomes active
+  useEffect(() => {
+    if (isChildActive && !expanded) setExpanded(true);
+  }, [isChildActive, expanded]);
+
+  // No children — simple link
+  if (!hasChildren) {
+    if (collapsed) {
+      return (
+        <div
+          className="relative group"
+        >
+          <Link
+            href={item.href}
+            onClick={onNavigate}
+            className={`flex items-center justify-center rounded-lg px-0 py-2 text-sm font-medium transition active:scale-[0.98] ${
+              active ? "bg-brand text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+          </Link>
+          <div className="invisible group-hover:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 z-[100] whitespace-nowrap rounded-md bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 shadow-lg">
+            {item.label}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98] ${
+          active ? "bg-brand text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+        }`}
+      >
+        <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+        <span>{item.label}</span>
+      </Link>
+    );
+  }
+
+  // Collapsed sidebar — show icon as link to first child, with popover on hover for sub-items
+  if (collapsed) {
+    return (
+      <div
+        className="relative"
+        onMouseEnter={() => {
+          if (popoverTimeout.current) clearTimeout(popoverTimeout.current);
+          setShowPopover(true);
+        }}
+        onMouseLeave={() => {
+          popoverTimeout.current = setTimeout(() => setShowPopover(false), 150);
+        }}
+      >
+        <Link
+          href={item.children![0].href}
+          onClick={onNavigate}
+          className={`flex items-center justify-center rounded-lg px-0 py-2 text-sm font-medium transition active:scale-[0.98] ${
+            active ? "bg-brand text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+        </Link>
+        {/* Popover flyout for collapsed sub-items */}
+        {showPopover && (
+          <div className="absolute left-full top-0 z-[100] ml-2 min-w-[180px] rounded-lg border border-slate-700 bg-slate-800 py-1 shadow-xl">
+            <p className="px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">{item.label}</p>
+            {item.children!.map((child) => {
+              const childActive = pathname === child.href;
+              return (
+                <Link
+                  key={child.href + child.label}
+                  href={child.href}
+                  onClick={() => { setShowPopover(false); onNavigate(); }}
+                  className={`block px-3 py-2 text-sm transition ${
+                    childActive
+                      ? "bg-brand/20 text-brand-light font-medium"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Expanded sidebar — parent is clickable to navigate AND has expand/collapse toggle
+  return (
+    <div>
+      <div className="flex items-center">
+        <Link
+          href={item.children![0].href}
+          onClick={onNavigate}
+          className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98] ${
+            active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <AdminIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+          <span className="flex-1 text-left">{item.label}</span>
+        </Link>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+          aria-label={expanded ? "Collapse" : "Expand"}
+        >
+          <svg
+            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+      {expanded && (
+        <div className="ml-5 mt-0.5 space-y-0.5 border-l border-slate-700 pl-3">
+          {item.children!.map((child) => {
+            const childActive = pathname === child.href;
+            return (
+              <Link
+                key={child.href + child.label}
+                href={child.href}
+                onClick={onNavigate}
+                className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  childActive
+                    ? "bg-brand text-white"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${childActive ? "bg-white" : "bg-slate-600"}`} />
+                {child.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

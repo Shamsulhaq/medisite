@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     (consultation as any)._qrSvgBase64 = await generateQRBase64(qrData);
   }
 
-  const html = generateConsultationHtml(patient, consultation, doctorInfo, settings.prescription, chamberInfo);
+  const html = generateConsultationHtml(patient, consultation, doctorInfo, settings.prescription, chamberInfo, settings.prescriptionLayout);
 
   return new NextResponse(html, {
     headers: { "Content-Type": "text/html; charset=utf-8" },

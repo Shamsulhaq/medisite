@@ -8,9 +8,12 @@
   --color-brand: #0d9488; /* teal-600 */
   --color-brand-dark: #0f766e; /* teal-700 */
   --color-brand-light: #ccfbf1; /* teal-100 */
+  --color-accent: #0ea5e9; /* sky-500 */
   --color-ink: #0f172a; /* slate-900 */
   --color-muted: #475569; /* slate-600 */
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-heading: var(--font-geist-sans), system-ui, sans-serif;
+  --radius-base: 12px;
   --animate-slide-down: slide-down 0.3s ease-out;
 }
 
@@ -40,6 +43,16 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+/* Heading font */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+/* Dynamic border radius for cards/buttons */
+.rounded-theme {
+  border-radius: var(--radius-base);
 }
 
 /* Prevent iOS zoom on input focus (inputs must be 16px+) */

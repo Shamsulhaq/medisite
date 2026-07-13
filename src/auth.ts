@@ -46,7 +46,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return {
           id: user.id,
           name: user.username,
-          email: user.role, // piggyback role in email field for session
+          role: user.role,
         };
       },
     }),

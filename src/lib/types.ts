@@ -4,6 +4,7 @@
 // -----------------------------------------------------------------------------
 
 import type { Locale, LocalizedString } from "./i18n";
+import type { PrescriptionLayout } from "./prescription-layout";
 
 type LS = LocalizedString;
 
@@ -203,8 +204,20 @@ export type SiteSettings = {
   email: EmailConfig;
   prescription: PrescriptionConfig;
   prescriptionTemplates: PrescriptionTemplate[];
+  prescriptionLayout?: PrescriptionLayout;
   // Blog configuration
   blog: BlogConfig;
+  // Site appearance (theme, fonts, colors)
+  appearance?: SiteAppearance;
+};
+
+export type SiteAppearance = {
+  preset: string; // preset id or 'custom'
+  brandColor: string; // primary brand color hex
+  accentColor: string; // accent/secondary color hex
+  fontFamily: string; // body font
+  headingFont: string; // heading font
+  borderRadius: 'none' | 'sm' | 'md' | 'lg' | 'xl'; // corner rounding level
 };
 
 export type BlogPost = {

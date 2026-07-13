@@ -662,3 +662,182 @@ export async function markConsultationSuperseded(
     return false;
   }
 }
+
+// ---- Dashboard-optimised queries -------------------------------------------
+
+/**
+ * Returns total patient count using a DB-level COUNT query.
+ */
+export async function getPatientCount(): Promise<number> {
+  return prisma.patient.count();
+}
+
+/**
+ * Returns today's revenue — sum of paymentReceived for non-superseded
+ * consultations dated today.
+ */
+export async function getTodayRevenue(todayStr: string): Promise<number> {
+  const result = await prisma.consultation.aggregate({
+    where: { date: todayStr, superseded: false },
+    _sum: { paymentReceived: true },
+  });
+  return result._sum.paymentReceived ?? 0;
+}
+
+/**
+ * Returns the most recently updated patients (lightweight — no nested records).
+ * Used by the dashboard "Recent Patients" section.
+ */
+export async function getRecentPatients(limit = 5): Promise<
+  { id: string; patientId: string; name: string; phone: string; updatedAt: string }[]
+> {
+  const rows = await prisma.patient.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      patientId: true,
+      name: true,
+      phone: true,
+      updatedAt: true,
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    patientId: r.patientId,
+    name: r.name,
+    phone: r.phone,
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+/**
+ * Returns count of patients who had a non-superseded consultation today.
+ * Used by the dashboard "Doctor Visited Today" stat.
+ */
+export async function getDoctorVisitedTodayCount(todayStr: string): Promise<number> {
+  // Count distinct patients with consultations dated today (non-superseded)
+  const result = await prisma.consultation.findMany({
+    where: { date: todayStr, superseded: false },
+    select: { patientId: true },
+    distinct: ["patientId"],
+  });
+  return result.length;
+}
+
+/**
+ * Returns count of patients with pending vitals recorded (non-empty pendingVitalsAt).
+ */
+export async function getPatientsWithPendingVitalsCount(): Promise<number> {
+  return prisma.patient.count({
+    where: {
+      NOT: { pendingVitalsBp: "" },
+      pendingVitalsAt: { not: "" },
+    },
+  });
+}
+
+/**
+ * Returns a phone → {id, name} map for patients whose phones match the given
+ * list. Used by the dashboard to link appointments to patient records without
+ * loading every patient.
+ */
+export async function getPatientsByPhones(
+  phones: string[]
+): Promise<Map<string, { id: string; name: string }>> {
+  if (phones.length === 0) return new Map();
+  // Normalize phones
+  const normalized = phones.map((p) => p.replace(/[\s\-()]/g, ""));
+  const rows = await prisma.patient.findMany({
+    where: { phone: { in: normalized } },
+    select: { id: true, name: true, phone: true },
+  });
+  const map = new Map<string, { id: string; name: string }>();
+  for (const r of rows) {
+    map.set(r.phone.replace(/[\s\-()]/g, ""), { id: r.id, name: r.name });
+  }
+  return map;
+}
+
+export type FollowUpItem = {
+  id: string;
+  name: string;
+  patientId: string;
+  lastVisitDate: string;
+  followUp: string;
+  daysOverdue: number;
+};
+
+/**
+ * Returns patients with overdue follow-ups, computed from their latest
+ * non-superseded consultation. Only fetches necessary fields.
+ */
+export async function getRecentFollowUps(limit = 8): Promise<FollowUpItem[]> {
+  // Get latest non-superseded consultation per patient that has a followUp value
+  // We fetch consultations with followUp and then group by patient
+  const consultations = await prisma.consultation.findMany({
+    where: {
+      superseded: false,
+      followUp: { not: "" },
+    },
+    orderBy: { date: "desc" },
+    select: {
+      patientId: true,
+      date: true,
+      followUp: true,
+      patient: {
+        select: { id: true, patientId: true, name: true },
+      },
+    },
+  });
+
+  // Group by patient — keep only the latest consultation per patient
+  const latestPerPatient = new Map<string, typeof consultations[0]>();
+  for (const c of consultations) {
+    if (!latestPerPatient.has(c.patientId)) {
+      latestPerPatient.set(c.patientId, c);
+    }
+  }
+
+  const now = new Date();
+  const results: FollowUpItem[] = [];
+
+  for (const [, c] of latestPerPatient) {
+    // Try to extract a follow-up date
+    let followUpDate: Date | null = null;
+    const dateMatch = c.followUp.match(/(\d{4}-\d{2}-\d{2})/);
+    if (dateMatch) {
+      followUpDate = new Date(dateMatch[1]);
+    } else {
+      // Try relative durations like "৭ দিন পর", "After 7 days", "1 month পর"
+      const daysMatch = c.followUp.match(/(\d+)\s*(দিন|days?)/i);
+      const weeksMatch = c.followUp.match(/(\d+)\s*(সপ্তাহ|weeks?)/i);
+      const monthsMatch = c.followUp.match(/(\d+)\s*(মাস|months?)/i);
+      const visitDate = new Date(c.date);
+      if (daysMatch) {
+        followUpDate = new Date(visitDate.getTime() + Number(daysMatch[1]) * 86400000);
+      } else if (weeksMatch) {
+        followUpDate = new Date(visitDate.getTime() + Number(weeksMatch[1]) * 7 * 86400000);
+      } else if (monthsMatch) {
+        followUpDate = new Date(visitDate);
+        followUpDate.setMonth(followUpDate.getMonth() + Number(monthsMatch[1]));
+      }
+    }
+
+    if (followUpDate && followUpDate < now) {
+      const daysOverdue = Math.floor((now.getTime() - followUpDate.getTime()) / 86400000);
+      results.push({
+        id: c.patient.id,
+        name: c.patient.name,
+        patientId: c.patient.patientId,
+        lastVisitDate: c.date,
+        followUp: c.followUp,
+        daysOverdue,
+      });
+    }
+  }
+
+  // Sort by most overdue first and limit
+  results.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  return results.slice(0, limit);
+}
