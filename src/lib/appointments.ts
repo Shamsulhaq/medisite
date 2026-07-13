@@ -204,6 +204,96 @@ export async function addAppointment(
   return dbRowToType(row);
 }
 
+export type CapacityLimits = {
+  maxPerSlot: number; // 0/undefined = no per-slot limit
+  dayMax: number; // 0 = no per-day limit
+};
+
+export type BookAppointmentResult =
+  | { ok: true; appointment: Appointment }
+  | { ok: false; reason: "slot_full" | "day_full" };
+
+/**
+ * Atomically re-checks slot/day capacity and inserts the appointment inside a
+ * single Serializable transaction. This closes the check-then-insert race
+ * where two concurrent bookings could both pass the capacity check (read
+ * outside any transaction) and then both insert, overbooking the last slot.
+ *
+ * Serializable isolation makes Postgres detect the read/write conflict when
+ * two transactions race for the same slot: one commits, the other fails with
+ * a serialization error, which we catch and retry (re-checking capacity on
+ * each attempt) so the caller always gets an authoritative ok/slot_full result.
+ */
+export async function bookAppointmentWithCapacityCheck(
+  input: AppointmentInput,
+  limits: CapacityLimits,
+  status: AppointmentStatus = "pending"
+): Promise<BookAppointmentResult> {
+  const MAX_ATTEMPTS = 3;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          if (limits.maxPerSlot > 0) {
+            const bookedCount = await tx.appointment.count({
+              where: {
+                date: input.date,
+                time: input.time,
+                location: input.location || "",
+                status: { not: "cancelled" },
+              },
+            });
+            if (bookedCount >= limits.maxPerSlot) {
+              return { ok: false, reason: "slot_full" } as const;
+            }
+          }
+
+          if (limits.dayMax > 0) {
+            const dayCount = await tx.appointment.count({
+              where: {
+                date: input.date,
+                location: input.location || "",
+                status: { not: "cancelled" },
+              },
+            });
+            if (dayCount >= limits.dayMax) {
+              return { ok: false, reason: "day_full" } as const;
+            }
+          }
+
+          const row = await tx.appointment.create({
+            data: {
+              name: input.name,
+              email: input.email || "",
+              phone: input.phone,
+              mode: input.mode || "offline",
+              location: input.location || "",
+              date: input.date,
+              time: input.time,
+              reason: input.reason || "",
+              status,
+            },
+          });
+          return { ok: true, appointment: dbRowToType(row) } as const;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (err) {
+      // Postgres serialization failure under Serializable isolation — retry.
+      const code = (err as { code?: string })?.code;
+      const isSerializationFailure = code === "40001";
+      if (isSerializationFailure && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  // Unreachable in practice (loop always returns or throws), but keeps TS happy.
+  throw new Error("Failed to book appointment after retries.");
+}
+
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentStatus

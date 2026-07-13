@@ -18,6 +18,23 @@ const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
 const today = todayInBD;
 
+// Fetches a QR code (base64 SVG) for a consultation's public prescription
+// URL. `generateQRBase64` (src/lib/qr.ts) depends on the Node `qrcode`
+// package and cannot run in the browser, so the client asks the server for
+// it via /api/admin/qr instead — mirroring what the server-rendered print
+// routes (e.g. /api/admin/print-prescription) already do internally.
+async function fetchQrSvgBase64(publicToken: string): Promise<string> {
+  try {
+    const url = `${window.location.origin}/prescription/${publicToken}`;
+    const res = await fetch(`/api/admin/qr?data=${encodeURIComponent(url)}`);
+    if (!res.ok) return "";
+    const data = await res.json();
+    return typeof data.svgBase64 === "string" ? data.svgBase64 : "";
+  } catch {
+    return "";
+  }
+}
+
 function AttachmentField({ value, onChange }: { value: string; onChange: (url: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -276,6 +293,11 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
     const chamberInfo = c.chamberId
       ? (() => { const ch = chambers.find((x) => x.id === c.chamberId); return ch ? { name: ch.name, address: ch.address, phone: ch.phone } : undefined; })()
       : undefined;
+    // This is an unsaved draft with new/edited content, so it has no
+    // permanent public prescription URL yet (the real token is only
+    // generated on save). Showing a QR here would point to a *different*
+    // consultation's content, so the QR block is intentionally omitted from
+    // the preview — it will render correctly after saving and printing.
     const html = generateConsultationHtml(patient, consultationData, doctor, prescriptionConfig, chamberInfo);
     setPreviewHtml(html);
     setShowPreviewModal(true);
@@ -297,8 +319,14 @@ export default function ConsultationForm({ patient, doctor, prescriptionConfig, 
           const chamberInfo = lastConsultation.chamberId
             ? (() => { const ch = chambers.find((x) => x.id === lastConsultation.chamberId); return ch ? { name: ch.name, address: ch.address, phone: ch.phone } : undefined; })()
             : undefined;
-          printConsultation(patient, lastConsultation, doctor, prescriptionConfig, chamberInfo);
-          setTimeout(() => setPrinting(false), 1000);
+          (async () => {
+            const toPrint = { ...lastConsultation };
+            if (toPrint.publicToken) {
+              toPrint._qrSvgBase64 = await fetchQrSvgBase64(toPrint.publicToken);
+            }
+            printConsultation(patient, toPrint, doctor, prescriptionConfig, chamberInfo);
+            setTimeout(() => setPrinting(false), 1000);
+          })();
         }
       } else if (e.key === "m") {
         e.preventDefault();

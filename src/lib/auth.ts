@@ -128,26 +128,6 @@ async function ensureDefaultUser(): Promise<void> {
   }
 }
 
-/**
- * Get the first/main user (for backward compatibility with single-user API).
- * Seeds default user if DB is empty.
- */
-export async function getUser(): Promise<AdminUser> {
-  await ensureDefaultUser();
-  const user = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!user) throw new Error("No users found");
-  return {
-    id: user.id,
-    username: user.username,
-    salt: user.salt,
-    hash: user.hash,
-    role: user.role,
-    displayName: user.displayName,
-    active: user.active,
-    permissions: mergePermissions(user.role, user.permissions as Record<string, boolean> | null),
-  };
-}
-
 export async function getUserByUsername(username: string): Promise<AdminUser | null> {
   await ensureDefaultUser();
   const user = await prisma.user.findUnique({ where: { username } });
@@ -304,17 +284,13 @@ export async function verifyCredentials(
   return userMatch && passMatch;
 }
 
-export async function updateUsername(username: string): Promise<void> {
-  const user = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!user) return;
-  await prisma.user.update({ where: { id: user.id }, data: { username } });
+export async function updateUsername(userId: string, username: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { username } });
 }
 
-export async function updatePassword(password: string): Promise<void> {
-  const user = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!user) return;
+export async function updatePassword(userId: string, password: string): Promise<void> {
   const { salt, hash } = hashPassword(password);
-  await prisma.user.update({ where: { id: user.id }, data: { salt, hash } });
+  await prisma.user.update({ where: { id: userId }, data: { salt, hash } });
 }
 
 

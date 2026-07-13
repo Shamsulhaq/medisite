@@ -1,4 +1,5 @@
-import { getUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/rbac";
 import AccountForm from "@/components/admin/AccountForm";
 import { PageHeader } from "@/components/admin/ui";
 
@@ -10,7 +11,8 @@ export const metadata = {
 };
 
 export default async function AccountPage() {
-  const user = await getUser();
+  const user = await getCurrentUser();
+  if (!user) redirect("/admin/login");
 
   return (
     <div>

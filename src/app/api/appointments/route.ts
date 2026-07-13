@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addAppointment, getAppointments, validateAppointment } from "@/lib/appointments";
+import { getAppointments, validateAppointment, bookAppointmentWithCapacityCheck } from "@/lib/appointments";
 import { getSettings } from "@/lib/store";
 import { generateSlotsForDate, dayMaxPatients } from "@/lib/availability";
 import { rateLimit, getClientIp, rateLimitHeaders } from "@/lib/rate-limit";
@@ -122,55 +122,24 @@ export async function POST(request: Request) {
     );
   }
 
-  // Enforce slot capacity
   const maxPerSlot = availability.maxPerSlot ?? 10;
-  const existingAppointments = await getAppointments();
-  const bookedCount = existingAppointments.filter(
-    (a) => a.date === date && a.time === time && a.location === location && a.status !== "cancelled"
-  ).length;
-  if (bookedCount >= maxPerSlot) {
-    return NextResponse.json(
-      {
-        ok: false,
-        errors: [
-          "This time slot is fully booked. Please choose a different time.",
-        ],
-      },
-      { status: 422 }
-    );
-  }
-
-  // Enforce per-day maximum patients for this weekday (0 = no limit)
   const dayMax = dayMaxPatients(availability, date);
-  if (dayMax > 0) {
-    const dayCount = existingAppointments.filter(
-      (a) => a.date === date && a.location === location && a.status !== "cancelled"
-    ).length;
-    if (dayCount >= dayMax) {
-      return NextResponse.json(
-        {
-          ok: false,
-          errors: [
-            "This day is fully booked. Please choose another day.",
-          ],
-        },
-        { status: 422 }
-      );
-    }
-  }
 
   try {
-    const appointment = await addAppointment({
-      name,
-      email,
-      phone,
-      mode,
-      location,
-      date,
-      time,
-      reason,
-    });
-    return NextResponse.json({ ok: true, id: appointment.id }, { status: 201 });
+    const bookingResult = await bookAppointmentWithCapacityCheck(
+      { name, email, phone, mode, location, date, time, reason },
+      { maxPerSlot, dayMax }
+    );
+
+    if (!bookingResult.ok) {
+      const message =
+        bookingResult.reason === "slot_full"
+          ? "This time slot is fully booked. Please choose a different time."
+          : "This day is fully booked. Please choose another day.";
+      return NextResponse.json({ ok: false, errors: [message] }, { status: 422 });
+    }
+
+    return NextResponse.json({ ok: true, id: bookingResult.appointment.id }, { status: 201 });
   } catch (err) {
     console.error("Failed to save appointment:", err);
     return NextResponse.json(

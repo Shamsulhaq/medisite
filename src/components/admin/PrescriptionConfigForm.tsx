@@ -293,6 +293,15 @@ export default function PrescriptionConfigForm({
         </div>
       )}
 
+      {/* Timing datalist — shared with MedicineInput's `list="timing-options"`
+          so the template editor (below) behaves identically to the
+          consultation form when entering medicine timing. */}
+      <datalist id="timing-options">
+        {p.timingOptions.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+
       {/* Sticky save */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur md:left-64">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">

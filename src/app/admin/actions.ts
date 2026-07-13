@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import {
   updateUsername,
   updatePassword,
-  getUser,
   getUserByUsername,
   verifyPassword,
 } from "@/lib/auth";
@@ -102,14 +101,21 @@ export async function updateAccountAction(
   _prev: AccountState,
   formData: FormData
 ): Promise<AccountState> {
-  await requireSession();
+  const session = await requireSession();
 
   const newUsername = String(formData.get("username") ?? "").trim();
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-  const user = await getUser();
+  const sessionUsername = session.user?.name;
+  if (!sessionUsername) {
+    return { error: "Your session is invalid. Please log in again." };
+  }
+  const user = await getUserByUsername(sessionUsername);
+  if (!user) {
+    return { error: "Your account could not be found. Please log in again." };
+  }
 
   if (!verifyPassword(currentPassword, user.salt, user.hash)) {
     return { error: "Your current password is incorrect." };
@@ -129,11 +135,13 @@ export async function updateAccountAction(
   }
 
   if (newUsername && newUsername !== user.username) {
-    await updateUsername(newUsername);
+    await updateUsername(user.id, newUsername);
   }
   if (newPassword) {
-    await updatePassword(newPassword);
+    await updatePassword(user.id, newPassword);
   }
+
+  await logAudit(user.id, "UPDATE_ACCOUNT", "user", user.id);
 
   return { success: "Account updated successfully." };
 }
