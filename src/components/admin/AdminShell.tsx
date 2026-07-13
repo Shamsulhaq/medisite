@@ -100,6 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/settings/email", label: "Email Settings", icon: "send", permission: "canManageSettings" },
       { href: "/admin/settings/payment", label: "Payment Settings", icon: "creditCard", permission: "canManageSettings" },
       { href: "/admin/settings/backup", label: "Backup & Restore", icon: "database", roleOnly: "DOCTOR" },
+      { href: "/admin/audit", label: "Audit Log", icon: "history", roleOnly: "DOCTOR" },
     ],
   },
   {
