@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -10,42 +8,55 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
 # next.js
 /.next/
 /out/
 
-# production
+# production build
 /build
+
+# testing
+/coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# typescript (auto-generated)
+*.tsbuildinfo
+next-env.d.ts
+
+# env files
+.env*
+!.env.production.example
+
+# database
+/src/generated/prisma
+
+# data directory (patient data, uploads — do not commit)
+/data
+!/data/medicines.json
+!/data/public-uploads/
+!/data/secure-uploads/.gitkeep
+
+# uploaded media (user content)
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # misc
 .DS_Store
 *.pem
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# IDE / editors
+.vscode/
+.idea/
 
 # vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# appointment data store (contains personal data — do not commit)
-/data
-!/data/secure-uploads/.gitkeep
-
-# uploaded media (user content) — keep the folder, ignore its contents
-/public/uploads/*
-!/public/uploads/.gitkeep
-
-/src/generated/prisma
+# agent tooling artifacts
+skills-lock.json
